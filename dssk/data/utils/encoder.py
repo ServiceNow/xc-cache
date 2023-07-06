@@ -1,0 +1,115 @@
+import os
+import torch
+from transformers import AutoModel, AutoTokenizer
+from typing import List
+
+class Encoder():
+    # NOTE: this implementaion assumes available gpus indexes start from zero
+    #   and go till the max_rank, so one device per rank
+    # TODO: implement arbitrary cuda device list per rank
+    def __init__(self, model_name: str, maximum_length: int) -> None:
+        # this part is called in main process, so we do not initialize any model here
+        super().__init__()
+
+        # device_type will be set in the child process
+        # as at least with the current versions of cuda and pytorch
+        # any call which results with initialization of cuda in pytorch
+        # results in the cuda reinit error in the child process 
+        # even with the start being spawn in multiprocessing
+        self.device_type = None
+        self.device = None
+
+        self.model_name = model_name
+        self.maximum_length = maximum_length
+        self.encoder = None
+        self.tokenizer = None
+        self.parent_pid = os.getpid()
+        self.worker_pid = None
+        self.rank = None
+
+
+    def _init(self, rank):
+        # this function must be called only in child process
+        # also, it must be always called from the same child process
+        if self.worker_pid is None:   
+            self.worker_pid = os.getpid()
+        else: 
+            assert self.worker_pid == os.getpid()
+        assert self.worker_pid != self.parent_pid
+
+        # the function must be called for the same rank
+        if self.rank is None:
+            self.rank = rank
+        else:
+            assert self.rank == rank
+
+        if self.encoder is not None:
+            assert self.tokenizer is not None
+            return
+        assert self.tokenizer is None
+
+        self.device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        if self.device_type == 'cpu':
+            device_map = {'': 'cpu'}
+            self.device = 'cpu'
+        else:
+            assert self.device_type == 'cuda'
+            device_map = {'': rank}
+            self.device = f'cuda:{rank}'
+
+        self.tokenizer = (
+            AutoTokenizer.from_pretrained(self.model_name)
+        )
+
+        pad_token = self.tokenizer.pad_token
+        if pad_token is None:
+            self.tokenizer.add_special_tokens({'pad_token': self.tokenizer.eos_token})
+
+        self.encoder = AutoModel.from_pretrained(
+            self.model_name, 
+            bos_token_id=self.tokenizer.bos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            device_map=device_map
+            ).eval()
+
+        self.encoder.config.pad_token_id = self.tokenizer.pad_token_id
+    
+    def encode(
+        self, input_sentences: List[str], rank
+    ):
+        # encode is called from child process, so we can safelly initialize model here
+        self._init(rank)
+
+        tokenized_outputs = self.tokenizer(input_sentences, padding=True, return_tensors="pt")
+        input_ids = tokenized_outputs["input_ids"]
+        att_mask = tokenized_outputs["attention_mask"]
+        input_lenght = input_ids.size(1)
+
+        num_chunks = input_lenght // self.maximum_length + int( input_lenght % self.maximum_length > 0)
+
+        chunk_embedding_list = []
+
+        for i in range(num_chunks):
+            start_idx = i * self.maximum_length
+            end_idx = min((i + 1) * self.maximum_length, input_lenght)
+
+            with torch.no_grad():
+                chunk_embedding_list.append(
+                    self.encoder(
+                    input_ids=input_ids[:, start_idx:end_idx].to(self.device), 
+                    attention_mask=att_mask[:, start_idx:end_idx].to(self.device),)
+                    .last_hidden_state
+                    .detach()
+                    .cpu()
+                )
+
+        embedding = torch.cat(chunk_embedding_list, 1)
+
+        # Remove padding outputs.
+        output_embedding_list = []
+        for i in range(input_ids.size(0)):
+            non_padding_idx = att_mask[i,].sum().item()
+            non_padding_ids = embedding[i, :non_padding_idx, :]
+            output_embedding_list.append(non_padding_ids.tolist())
+
+        return output_embedding_list
