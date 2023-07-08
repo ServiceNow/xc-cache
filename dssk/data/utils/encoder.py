@@ -4,7 +4,14 @@ from transformers import AutoModel, AutoTokenizer
 from typing import List
 
 class Encoder():
-    # NOTE: this implementaion assumes available gpus indexes start from zero
+    '''
+    Please make sure a child process creation method is set to spawn
+    in right multiprocessing library.
+
+    The datasets.map uses multiprocess noy multiprocessing.
+    So, it must be multiprocess.set_start_method('spawn')
+    '''
+    # NOTE: this implementation assumes available gpus indexes start from zero
     #   and go till the max_rank, so one device per rank
     # TODO: implement arbitrary cuda device list per rank
     def __init__(self, model_name: str, maximum_length: int) -> None:
@@ -13,9 +20,9 @@ class Encoder():
 
         # device_type will be set in the child process
         # as at least with the current versions of cuda and pytorch
-        # any call which results with initialization of cuda in pytorch
-        # results in the cuda reinit error in the child process 
-        # even with the start being spawn in multiprocessing
+        # any call which results with initialization of cuda in pytorch in the main process
+        # will result in the cuda reinit error in the child process 
+        # if the start method is not set to spawn in multiprocess or multiprocessing libraries
         self.device_type = None
         self.device = None
 
