@@ -90,15 +90,15 @@ class Encoder():
         tokenized_outputs = self.tokenizer(input_sentences, padding=True, return_tensors="pt")
         input_ids = tokenized_outputs["input_ids"]
         att_mask = tokenized_outputs["attention_mask"]
-        input_lenght = input_ids.size(1)
+        input_length = input_ids.size(1)
 
-        num_chunks = input_lenght // self.maximum_length + int( input_lenght % self.maximum_length > 0)
+        num_chunks = input_length // self.maximum_length + int( input_length % self.maximum_length > 0)
 
         chunk_embedding_list = []
 
         for i in range(num_chunks):
             start_idx = i * self.maximum_length
-            end_idx = min((i + 1) * self.maximum_length, input_lenght)
+            end_idx = min((i + 1) * self.maximum_length, input_length)
 
             with torch.no_grad():
                 chunk_embedding_list.append(
