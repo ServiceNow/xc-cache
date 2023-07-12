@@ -3,14 +3,32 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 from typing import List
 
+def remove_padding(padded_embeddings: torch.Tensor, padding_att_mask: torch.Tensor) -> List[float]:
+    """Remove padding outputs from embeddings.
+
+    Args:
+        padded_embeddings (torch.Tensor): Embeddings with right padding outputs.
+        padding_att_mask (torch.Tensor): Padding masks.
+
+    Returns:
+        List[float]: List of unpadded embedding tensors converted to nested python lists.
+    """
+    output_embedding_list = []
+    for i in range(padding_att_mask.size(0)):
+        non_padding_idx = padding_att_mask[i,].sum().item()
+        non_padding_ids = padded_embeddings[i, :non_padding_idx, :]
+        output_embedding_list.append(non_padding_ids.tolist())
+    
+    return output_embedding_list
+
 class Encoder():
-    '''
+    """
     Please make sure a child process creation method is set to spawn
     in right multiprocessing library.
 
-    The datasets.map uses multiprocess noy multiprocessing.
+    The datasets.map uses multiprocess not multiprocessing.
     So, it must be multiprocess.set_start_method('spawn')
-    '''
+    """
     # NOTE: this implementation assumes available gpus indexes start from zero
     #   and go till the max_rank, so one device per rank
     # TODO: implement arbitrary cuda device list per rank
@@ -112,11 +130,4 @@ class Encoder():
 
         embedding = torch.cat(chunk_embedding_list, 1)
 
-        # Remove padding outputs.
-        output_embedding_list = []
-        for i in range(input_ids.size(0)):
-            non_padding_idx = att_mask[i,].sum().item()
-            non_padding_ids = embedding[i, :non_padding_idx, :]
-            output_embedding_list.append(non_padding_ids.tolist())
-
-        return output_embedding_list
+        return remove_padding(embedding, att_mask)
