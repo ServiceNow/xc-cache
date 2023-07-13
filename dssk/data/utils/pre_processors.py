@@ -17,13 +17,17 @@ class WikipediaPreProcessor:
             f"{self.field_name_prefix}title_embedding": title_embedding,
             f"{self.field_name_prefix}text_embedding": text_embedding,
             })
+        
+        return examples
 
 class SquadV2PreProcessor:
     def __init__(self,
                  encoder: Encoder,
-                 context_length: int,) -> None:
+                 context_length: int,
+                 return_context_embedding_only: bool = False) -> None:
         self.encoder = encoder
         self.context_length = context_length
+        self.return_context_embedding_only = return_context_embedding_only
 
     def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
         context_str = [f"context: {row}" for row in examples["context"]]
@@ -32,6 +36,11 @@ class SquadV2PreProcessor:
             context_str,
             rank
             )
+        
+        if self.return_context_embedding_only:
+            return {
+                "encoder_hidden_states": context_embedding
+                }
 
         question_str = [row for row in examples["question"]]
 
