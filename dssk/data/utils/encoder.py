@@ -32,7 +32,7 @@ class Encoder():
     # NOTE: this implementation assumes available gpus indexes start from zero
     #   and go till the max_rank, so one device per rank
     # TODO: implement arbitrary cuda device list per rank
-    def __init__(self, model_name: str, maximum_length: int) -> None:
+    def __init__(self, model_name: str, maximum_length: int, num_proc: int=1) -> None:
         # this part is called in main process, so we do not initialize any model here
         super().__init__()
 
@@ -44,6 +44,7 @@ class Encoder():
         self.device_type = None
         self.device = None
 
+        self.num_proc = num_proc
         self.model_name = model_name
         self.maximum_length = maximum_length
         self.encoder = None
@@ -54,13 +55,18 @@ class Encoder():
 
 
     def _init(self, rank):
-        # this function must be called only in child process
+
+        # If self.num_proc > 1 this function must be called only in child process
         # also, it must be always called from the same child process
         if self.worker_pid is None:   
             self.worker_pid = os.getpid()
         else: 
             assert self.worker_pid == os.getpid()
-        assert self.worker_pid != self.parent_pid
+        if self.num_proc > 1:
+            assert self.worker_pid != self.parent_pid
+            assert rank is not None
+        elif rank is None:
+            rank = 0
 
         # the function must be called for the same rank
         if self.rank is None:
