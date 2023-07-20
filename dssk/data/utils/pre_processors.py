@@ -7,24 +7,26 @@ class WikipediaPreProcessor:
     def __init__(self, encoder: Encoder, field_name_prefix: Optional[str] = "") -> None:
         self.encoder = encoder
         self.field_name_prefix = field_name_prefix
-    
+
     def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
         title_str = examples["title"]
         text_str = examples["text"]
         title_embedding = self.encoder.encode(title_str, rank)
         text_embedding = self.encoder.encode(text_str, rank)
-        examples.update({
-            f"{self.field_name_prefix}title_embedding": title_embedding,
-            f"{self.field_name_prefix}text_embedding": text_embedding,
-            })
-        
+        examples.update(
+            {
+                f"{self.field_name_prefix}title_embedding": title_embedding,
+                f"{self.field_name_prefix}text_embedding": text_embedding,
+            }
+        )
+
         return examples
 
+
 class SquadV2PreProcessor:
-    def __init__(self,
-                 encoder: Encoder,
-                 context_length: int,
-                 return_context_embedding_only: bool = False) -> None:
+    def __init__(
+        self, encoder: Encoder, context_length: int, return_context_embedding_only: bool = False
+    ) -> None:
         self.encoder = encoder
         self.context_length = context_length
         self.return_context_embedding_only = return_context_embedding_only
@@ -32,15 +34,10 @@ class SquadV2PreProcessor:
     def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
         context_str = [f"context: {row}" for row in examples["context"]]
 
-        context_embedding =  self.encoder.encode(
-            context_str,
-            rank
-            )
-        
+        context_embedding = self.encoder.encode(context_str, rank)
+
         if self.return_context_embedding_only:
-            return {
-                "encoder_hidden_states": context_embedding
-                }
+            return {"encoder_hidden_states": context_embedding}
 
         question_str = [row for row in examples["question"]]
 
@@ -50,9 +47,9 @@ class SquadV2PreProcessor:
                 answer = row["text"][0]
             except IndexError:
                 answer = ""
-                
+
             answer_str.append(answer)
-        
+
         input_str = [f"question: {q}\nanswer: {a}" for (q, a) in zip(question_str, answer_str)]
 
         input_ids = self.encoder.tokenizer(
@@ -61,7 +58,4 @@ class SquadV2PreProcessor:
             truncation=True,
         )["input_ids"]
 
-        return {
-            "input_ids": input_ids,
-            "encoder_hidden_states": context_embedding
-        }
+        return {"input_ids": input_ids, "encoder_hidden_states": context_embedding}

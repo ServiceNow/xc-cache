@@ -3,6 +3,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 from typing import List
 
+
 def remove_padding(padded_embeddings: torch.Tensor, padding_att_mask: torch.Tensor) -> List[float]:
     """Remove padding outputs from embeddings.
 
@@ -18,10 +19,11 @@ def remove_padding(padded_embeddings: torch.Tensor, padding_att_mask: torch.Tens
         non_padding_idx = padding_att_mask[i,].sum().item()
         non_padding_ids = padded_embeddings[i, :non_padding_idx, :]
         output_embedding_list.append(non_padding_ids.tolist())
-    
+
     return output_embedding_list
 
-class Encoder():
+
+class Encoder:
     """
     Please make sure a child process creation method is set to spawn
     in right multiprocessing library.
@@ -29,17 +31,18 @@ class Encoder():
     The datasets.map uses multiprocess not multiprocessing.
     So, it must be multiprocess.set_start_method('spawn')
     """
+
     # NOTE: this implementation assumes available gpus indexes start from zero
     #   and go till the max_rank, so one device per rank
     # TODO: implement arbitrary cuda device list per rank
-    def __init__(self, model_name: str, maximum_length: int, num_proc: int=1) -> None:
+    def __init__(self, model_name: str, maximum_length: int, num_proc: int = 1) -> None:
         # this part is called in main process, so we do not initialize any model here
         super().__init__()
 
         # device_type will be set in the child process
         # as at least with the current versions of cuda and pytorch
         # any call which results with initialization of cuda in pytorch in the main process
-        # will result in the cuda reinit error in the child process 
+        # will result in the cuda reinit error in the child process
         # if the start method is not set to spawn in multiprocess or multiprocessing libraries
         self.device_type = None
         self.device = None
@@ -53,14 +56,12 @@ class Encoder():
         self.worker_pid = None
         self.rank = None
 
-
     def _init(self, rank):
-
         # If self.num_proc > 1 this function must be called only in child process
         # also, it must be always called from the same child process
-        if self.worker_pid is None:   
+        if self.worker_pid is None:
             self.worker_pid = os.getpid()
-        else: 
+        else:
             assert self.worker_pid == os.getpid()
         if self.num_proc > 1:
             assert self.worker_pid != self.parent_pid
@@ -80,34 +81,30 @@ class Encoder():
         assert self.tokenizer is None
 
         self.device_type = "cuda" if torch.cuda.is_available() else "cpu"
-        if self.device_type == 'cpu':
-            device_map = {'': 'cpu'}
-            self.device = 'cpu'
+        if self.device_type == "cpu":
+            device_map = {"": "cpu"}
+            self.device = "cpu"
         else:
-            assert self.device_type == 'cuda'
-            device_map = {'': rank}
-            self.device = f'cuda:{rank}'
+            assert self.device_type == "cuda"
+            device_map = {"": rank}
+            self.device = f"cuda:{rank}"
 
-        self.tokenizer = (
-            AutoTokenizer.from_pretrained(self.model_name)
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
         pad_token = self.tokenizer.pad_token
         if pad_token is None:
-            self.tokenizer.add_special_tokens({'pad_token': self.tokenizer.eos_token})
+            self.tokenizer.add_special_tokens({"pad_token": self.tokenizer.eos_token})
 
         self.encoder = AutoModel.from_pretrained(
-            self.model_name, 
+            self.model_name,
             bos_token_id=self.tokenizer.bos_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
-            device_map=device_map
-            ).eval()
+            device_map=device_map,
+        ).eval()
 
         self.encoder.config.pad_token_id = self.tokenizer.pad_token_id
-    
-    def encode(
-        self, input_sentences: List[str], rank
-    ):
+
+    def encode(self, input_sentences: List[str], rank):
         # encode is called from child process, so we can safelly initialize model here
         self._init(rank)
 
@@ -116,7 +113,9 @@ class Encoder():
         att_mask = tokenized_outputs["attention_mask"]
         input_length = input_ids.size(1)
 
-        num_chunks = input_length // self.maximum_length + int( input_length % self.maximum_length > 0)
+        num_chunks = input_length // self.maximum_length + int(
+            input_length % self.maximum_length > 0
+        )
 
         chunk_embedding_list = []
 
@@ -127,10 +126,10 @@ class Encoder():
             with torch.no_grad():
                 chunk_embedding_list.append(
                     self.encoder(
-                    input_ids=input_ids[:, start_idx:end_idx].to(self.device), 
-                    attention_mask=att_mask[:, start_idx:end_idx].to(self.device),)
-                    .last_hidden_state
-                    .detach()
+                        input_ids=input_ids[:, start_idx:end_idx].to(self.device),
+                        attention_mask=att_mask[:, start_idx:end_idx].to(self.device),
+                    )
+                    .last_hidden_state.detach()
                     .cpu()
                 )
 
