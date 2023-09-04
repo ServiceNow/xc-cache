@@ -59,3 +59,35 @@ class SquadV2PreProcessor:
         )["input_ids"]
 
         return {"input_ids": input_ids, "encoder_hidden_states": context_embedding}
+
+
+class NQPreProcessor:
+    def __init__(
+        self, encoder: Encoder
+    ) -> None:
+        self.encoder = encoder
+
+    def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
+
+        context_str = [f"context: {row}" for row in examples["long_answer_clean"]]
+
+        # context_embedding = [emb.tolist() for emb in self.encoder.encode(context_str, rank)]
+        context_embedding = self.encoder.encode(context_str, rank)
+        question_str = [row for row in examples["question_text"]]
+
+        answer_str = []
+        for i in range(len(context_str)):
+
+            if len(examples["short_answers_text"][i]) > 0:
+                answer = examples["short_answers_text"][i][0]
+            elif examples["yes_no_answer"][i] == 1:
+                answer = "Yes"
+            else:
+                answer = "Answer not in context."
+            answer_str.append(answer)
+
+        return {
+            "context": context_str, 
+            "question": question_str, 
+            "answer": answer_str,
+            "encoder_hidden_states": context_embedding}
