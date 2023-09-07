@@ -82,6 +82,8 @@ class NQPreProcessor:
                 answer = examples["short_answers_text"][i][0]
             elif examples["yes_no_answer"][i] == 1:
                 answer = "Yes"
+            elif examples["yes_no_answer"][i] == 0:
+                answer = "No"
             else:
                 answer = "Answer not in context."
             answer_str.append(answer)
