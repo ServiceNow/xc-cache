@@ -69,6 +69,9 @@ class NQPreProcessor:
 
     def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
 
+        # rank is the process id. E.g., a 4-GPU processing job would have ranks in [0:4].
+        # Check dssk.data.utils.encoders.Encoder
+
         context_str = [f"context: {row}" for row in examples["long_answer_clean"]]
 
         # context_embedding = [emb.tolist() for emb in self.encoder.encode(context_str, rank)]
