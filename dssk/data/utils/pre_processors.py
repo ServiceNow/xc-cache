@@ -62,13 +62,10 @@ class SquadV2PreProcessor:
 
 
 class NQPreProcessor:
-    def __init__(
-        self, encoder: Encoder
-    ) -> None:
+    def __init__(self, encoder: Encoder) -> None:
         self.encoder = encoder
 
     def __call__(self, examples: Dict[str, List], rank: int) -> Dict[str, torch.Tensor]:
-
         # rank is the process id. E.g., a 4-GPU processing job would have ranks in [0:4].
         # Check dssk.data.utils.encoders.Encoder
 
@@ -80,7 +77,6 @@ class NQPreProcessor:
 
         answer_str = []
         for i in range(len(context_str)):
-
             if len(examples["short_answers_text"][i]) > 0:
                 answer = examples["short_answers_text"][i][0]
             elif examples["yes_no_answer"][i] == 1:
@@ -92,7 +88,8 @@ class NQPreProcessor:
             answer_str.append(answer)
 
         return {
-            "context": context_str, 
-            "question": question_str, 
+            "context": context_str,
+            "question": question_str,
             "answer": answer_str,
-            "encoder_hidden_states": context_embedding}
+            "encoder_hidden_states": context_embedding,
+        }
