@@ -104,6 +104,7 @@ class Encoder:
 
         self.encoder.config.pad_token_id = self.tokenizer.pad_token_id
 
+    @torch.no_grad()
     def encode(self, input_sentences: List[str], rank):
         # encode is called from child process, so we can safelly initialize model here
         self._init(rank)
@@ -111,28 +112,10 @@ class Encoder:
         tokenized_outputs = self.tokenizer(input_sentences, padding=True, return_tensors="pt")
         input_ids = tokenized_outputs["input_ids"]
         att_mask = tokenized_outputs["attention_mask"]
-        input_length = input_ids.size(1)
 
-        num_chunks = input_length // self.maximum_length + int(
-            input_length % self.maximum_length > 0
-        )
-
-        chunk_embedding_list = []
-
-        for i in range(num_chunks):
-            start_idx = i * self.maximum_length
-            end_idx = min((i + 1) * self.maximum_length, input_length)
-
-            with torch.no_grad():
-                chunk_embedding_list.append(
-                    self.encoder(
-                        input_ids=input_ids[:, start_idx:end_idx].to(self.device),
-                        attention_mask=att_mask[:, start_idx:end_idx].to(self.device),
-                    )
-                    .last_hidden_state.detach()
-                    .cpu()
-                )
-
-        embedding = torch.cat(chunk_embedding_list, 1)
+        embedding = self.encoder( # We truncate long sequences to self.maximum_length
+            input_ids=input_ids[:, :self.maximum_length].to(self.device),
+            attention_mask=att_mask[:, :self.maximum_length].to(self.device),
+            ).last_hidden_state.detach().cpu()
 
         return remove_padding(embedding, att_mask)
