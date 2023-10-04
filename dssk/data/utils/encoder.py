@@ -89,7 +89,6 @@ class Encoder:
             device_map = {"": rank}
             self.device = f"cuda:{rank}"
 
-
         if self.encoder is None:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
@@ -112,22 +111,26 @@ class Encoder:
         self._init(rank)
 
         tokenized_outputs = self.tokenizer(input_sentences, padding=True, return_tensors="pt")
-        input_ids = tokenized_outputs["input_ids"][:, :self.maximum_length]
-        att_mask = tokenized_outputs["attention_mask"][:, :self.maximum_length]
+        input_ids = tokenized_outputs["input_ids"][:, : self.maximum_length]
+        att_mask = tokenized_outputs["attention_mask"][:, : self.maximum_length]
 
         try:
             # Try to embed on device first.
-            embedding = self.encoder( # We truncate long sequences to self.maximum_length
-                input_ids=input_ids.to(self.device),
-                attention_mask=att_mask.to(self.device),
-                ).last_hidden_state.detach().cpu()
-        except:
+            embedding = (
+                self.encoder(  # We truncate long sequences to self.maximum_length
+                    input_ids=input_ids.to(self.device),
+                    attention_mask=att_mask.to(self.device),
+                )
+                .last_hidden_state.detach()
+                .cpu()
+            )
+        except:  # noqa E722
             # In case of any error, we try again on cpu
             self.encoder = self.encoder.to("cpu")
-            embedding = self.encoder( # We truncate long sequences to self.maximum_length
+            embedding = self.encoder(  # We truncate long sequences to self.maximum_length
                 input_ids=input_ids.to("cpu"),
                 attention_mask=att_mask.to("cpu"),
-                ).last_hidden_state.detach()
+            ).last_hidden_state.detach()
             self.encoder = self.encoder.to(self.device)
 
         return remove_padding(embedding, att_mask)
