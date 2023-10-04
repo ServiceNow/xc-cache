@@ -89,50 +89,48 @@ class Encoder:
             device_map = {"": rank}
             self.device = f"cuda:{rank}"
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        if self.encoder is None:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
-        pad_token = self.tokenizer.pad_token
-        if pad_token is None:
-            self.tokenizer.add_special_tokens({"pad_token": self.tokenizer.eos_token})
+            pad_token = self.tokenizer.pad_token
+            if pad_token is None:
+                self.tokenizer.add_special_tokens({"pad_token": self.tokenizer.eos_token})
 
-        self.encoder = AutoModel.from_pretrained(
-            self.model_name,
-            bos_token_id=self.tokenizer.bos_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            device_map=device_map,
-        ).eval()
+            self.encoder = AutoModel.from_pretrained(
+                self.model_name,
+                bos_token_id=self.tokenizer.bos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                device_map=device_map,
+            ).eval()
 
-        self.encoder.config.pad_token_id = self.tokenizer.pad_token_id
+            self.encoder.config.pad_token_id = self.tokenizer.pad_token_id
 
+    @torch.no_grad()
     def encode(self, input_sentences: List[str], rank):
         # encode is called from child process, so we can safelly initialize model here
         self._init(rank)
 
         tokenized_outputs = self.tokenizer(input_sentences, padding=True, return_tensors="pt")
-        input_ids = tokenized_outputs["input_ids"]
-        att_mask = tokenized_outputs["attention_mask"]
-        input_length = input_ids.size(1)
+        input_ids = tokenized_outputs["input_ids"][:, : self.maximum_length]
+        att_mask = tokenized_outputs["attention_mask"][:, : self.maximum_length]
 
-        num_chunks = input_length // self.maximum_length + int(
-            input_length % self.maximum_length > 0
-        )
-
-        chunk_embedding_list = []
-
-        for i in range(num_chunks):
-            start_idx = i * self.maximum_length
-            end_idx = min((i + 1) * self.maximum_length, input_length)
-
-            with torch.no_grad():
-                chunk_embedding_list.append(
-                    self.encoder(
-                        input_ids=input_ids[:, start_idx:end_idx].to(self.device),
-                        attention_mask=att_mask[:, start_idx:end_idx].to(self.device),
-                    )
-                    .last_hidden_state.detach()
-                    .cpu()
+        try:
+            # Try to embed on device first.
+            embedding = (
+                self.encoder(  # We truncate long sequences to self.maximum_length
+                    input_ids=input_ids.to(self.device),
+                    attention_mask=att_mask.to(self.device),
                 )
-
-        embedding = torch.cat(chunk_embedding_list, 1)
+                .last_hidden_state.detach()
+                .cpu()
+            )
+        except:  # noqa E722
+            # In case of any error, we try again on cpu
+            self.encoder = self.encoder.to("cpu")
+            embedding = self.encoder(  # We truncate long sequences to self.maximum_length
+                input_ids=input_ids.to("cpu"),
+                attention_mask=att_mask.to("cpu"),
+            ).last_hidden_state.detach()
+            self.encoder = self.encoder.to(self.device)
 
         return remove_padding(embedding, att_mask)
