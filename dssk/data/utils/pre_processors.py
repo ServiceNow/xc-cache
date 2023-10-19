@@ -62,6 +62,7 @@ class SquadV2PreProcessor:
 
 
 class NQPreProcessor:
+    # TODO: substitute/use dssk.data.text_formats
     def __init__(self, encoder: Encoder) -> None:
         self.encoder = encoder
 
