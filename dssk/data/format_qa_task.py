@@ -1,8 +1,6 @@
 from typing import Any
 from datasets import Dataset
 
-from dssk.utils.no_cache import no_cache
-
 
 def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
     question_text = d["question_text"]
@@ -78,11 +76,10 @@ def format_qa_task(
     in the input, and they are not in the output.
     If `answer_text` is present in the input, it must remain present in the output. If `answered_example` is `True`, then `answer_text` is mandatory in the input.
     """
-    with no_cache():
-        # Add the two input fields
-        tmp = qa_task.map(
-            KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
-        )
-        # Remove the consumed fields
-        tmp = tmp.remove_columns(["question_text", "context_texts", "contexts_headers"])
+    # Add the two input fields
+    tmp = qa_task.map(
+        KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
+    )
+    # Remove the consumed fields
+    tmp = tmp.remove_columns(["question_text", "context_texts", "contexts_headers"])
     return tmp
