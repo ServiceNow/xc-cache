@@ -70,6 +70,7 @@ def get_qa_task(
     cache_path: str,
     context: str = "only_gold_long",
     answer: str = "newline",
+    subset_size: Optional[int] = None,
     **kwargs,  # Discarded
 ) -> Dataset:
     """Get the correct dataset (split) and preprocess it for a specific "task"
@@ -95,11 +96,18 @@ def get_qa_task(
     - answer_text: str
         A (usually short) answer.
         TODO: Some evaluation scheme may benefit from something more structured. We should think about it.
+
+    - subset_size: Optional[int]
+        The number of samples to keep as a subset of the dataset.
+        For debug and/or test purpose.
     """
     # This implementation is "fake", not general at all. But it works for our evaluation purpose.
     # TODO: Come to an agreement about the interface so that we can use this "task" concept for both training/evaluation purpose.
     assert dataset_name == "long_nq_dedup"
     raw = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
+    if subset_size is not None:
+        assert subset_size > 0
+        raw = raw.select(range(subset_size))
     with no_cache():
         tmp = raw.map(KNOWN_ANSWER_OPTIONS[answer])
         tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[context])
