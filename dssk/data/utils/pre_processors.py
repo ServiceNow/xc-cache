@@ -1,6 +1,6 @@
 import torch
 from typing import List, Dict, Optional
-from utils.encoder import Encoder
+from dssk.data.utils.encoder import Encoder
 
 
 class WikipediaPreProcessor:
