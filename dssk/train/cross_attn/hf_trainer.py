@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from transformers import Trainer, PreTrainedTokenizerFast, PreTrainedModel
 from datasets import Dataset
-from dssk.models.cross_attn.datasets_loader import Collator
+from dssk.data.cross_attn.datasets_loader import Collator
 from typing import Optional
 
 
@@ -75,7 +75,7 @@ def get_trainer(
 
     if wandb_entity_name is not None and wandb_project_name is not None:
         import wandb
-        from dssk.models.cross_attn.logging_callback import LoggingCallback
+        from dssk.utils.wandb_logging_callback import LoggingCallback
 
         try:
             wandb.init(
