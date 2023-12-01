@@ -7,7 +7,8 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
-from dssk.models.cross_attn.constants import ENCODER_EMBEDDING_PADDING_VALUE
+
+ENCODER_EMBEDDING_PADDING_VALUE = -100.0
 
 
 def augment_qa_str(input_str: str, question_str: str, answer_str: str) -> str:

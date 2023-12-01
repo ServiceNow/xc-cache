@@ -2,7 +2,7 @@ from typing import Optional, Any
 
 from datasets import load_dataset, Dataset
 
-from dssk.utils.no_cache import no_cache
+from dssk.utils.hf_datasets import no_cache
 
 
 QUESTION_ID_COLUMNS = {"question_id", "question_index"}

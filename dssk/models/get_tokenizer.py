@@ -1,10 +1,7 @@
-from typing import Tuple
-from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerFast
+from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
-def get_tokenizer(
-    model_path: str,
-) -> Tuple[PreTrainedModel, PreTrainedTokenizerFast]:
+def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
     """Helper function to get tokenizer and add missing special tokens.
 
     Args:
@@ -12,6 +9,10 @@ def get_tokenizer(
 
     Returns:
         PreTrainedTokenizerFast: Pre-trained tokenizer.
+
+    TODO: Handle model_max_length.
+    TODO: Ensure that only scripts call this.
+    TODO: Refactor this to a dssk/getters.py, where all get_something will reside.
     """
 
     tokenizer = AutoTokenizer.from_pretrained(
