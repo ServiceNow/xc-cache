@@ -75,7 +75,7 @@ def get_trainer(
 
     if wandb_entity_name is not None and wandb_project_name is not None:
         import wandb
-        from dssk.utils.wandb_logging_callback import LoggingCallback
+        from dssk.utils.scripting import LoggingCallback
 
         try:
             wandb.init(
