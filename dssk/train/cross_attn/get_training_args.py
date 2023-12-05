@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from typing import Dict, Union
 
 
-def get_hf_training_args(
+def get_training_args(
     exp_dict: Dict[str, Union[str, int, float]], args: ArgumentParser, savedir: str
 ) -> Seq2SeqTrainingArguments:
     """Prepare training args given exp dict and command line args.
