@@ -5,8 +5,7 @@ from datasets import Dataset
 def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
     question_text = d["question_text"]
     context_texts = d["context_texts"]
-    # TODO: check headers
-    context_headers = d["context_headers"]
+    context_headers = d["contexts_headers"]
     answer_text = d.get("answer_text", None)
     if answered_example:
         assert answer_text  # Both None and "" are illegal.
@@ -43,15 +42,13 @@ def system_user_assistant_prompt_format(
 
 
 def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    question_text, context_texts, context_headers, answer_text = get_sample_info(
-        d, answered_example
-    )
+    question_text, context_texts, context_headers, _ = get_sample_info(d, answered_example)
 
     if len(context_texts) < 1:
         passages = [f"question: {question_text}"]
 
     passages = [
-        f"question: {question_text} title: {title} context: {text}"
+        f"question: {question_text} title: {title[0]} context: {text}"
         for text, title in zip(context_texts, context_headers)
     ]
 
