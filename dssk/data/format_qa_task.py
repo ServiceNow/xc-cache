@@ -1,6 +1,8 @@
 from typing import Any
 from datasets import Dataset
 
+from dssk.utils.hf_datasets import update_infodict
+
 
 def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
     question_text = d["question_text"]
@@ -98,4 +100,14 @@ def format_qa_task(
     )
     # Remove the consumed fields
     tmp = tmp.remove_columns(["question_text", "context_texts", "contexts_headers"])
+
+    update_infodict(
+        tmp,
+        {
+            "format": {
+                "task_format": task_format,
+                "answered_example": answered_example,
+            }
+        },
+    )
     return tmp
