@@ -73,6 +73,15 @@ class CrossAttnInterface(AbstractLMInterface):
             model_max_length = self.model.transformer.wpe.num_embeddings
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
+    @property
+    def model_info(self) -> dict[str, Any]:
+        # See docstring in AbstractLMInterface.model_info
+        return {
+            "class_name": self.model.__class__.__name__,
+            "name_or_path": self.model.name_or_path,
+            "default_gen_args": self.default_gen_args,
+        }
+
     def __call__(self, sample: dict[str, Any], **gen_args) -> dict[str, Any]:
         """
         Any extra keyword arguments will be sent to the model.

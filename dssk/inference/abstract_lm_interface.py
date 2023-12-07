@@ -4,6 +4,8 @@ from typing import Any, Optional
 
 from datasets import Dataset, load_from_disk
 
+from dssk.utils.hf_datasets import update_infodict
+
 
 class AbstractLMInterface(ABC):
     """Interface through which we can interact with a broad variety of language models."""
@@ -16,6 +18,17 @@ class AbstractLMInterface(ABC):
         """
         Return the early-stopping token which can be added to the end of the output.
         """
+
+    @property
+    def model_info(self) -> dict[str, Any]:
+        """Information about this model, how it was train, etc.
+
+        Anything that could affect performances and/or be relevant in evaluation may appear here.
+
+        This default implementation should be overridden.
+        TODO: Implement this method in all our interfaces, then consider making this an @abstractmethod.
+        """
+        return {"ModelInfoNotImplementedInInterface": "You should implement it :)"}
 
     @abstractmethod
     def __call__(self, sample: dict[str, Any], **gen_args) -> dict[str, Any]:
@@ -62,6 +75,8 @@ class AbstractLMInterface(ABC):
             new_fingerprint="version_1",
             desc=desc,
         )
+        # Add model information dictionary
+        update_infodict(out, {"model": self.model_info})
         # Save and/or return output.
         if named_cache_path is not None:
             out.save_to_disk(named_cache_path)

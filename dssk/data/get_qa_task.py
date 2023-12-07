@@ -2,7 +2,7 @@ from typing import Optional, Any
 
 from datasets import load_dataset, Dataset
 
-from dssk.utils.hf_datasets import no_cache
+from dssk.utils.hf_datasets import no_cache, update_infodict
 
 
 QUESTION_ID_COLUMNS = {"question_id", "question_index"}
@@ -113,5 +113,17 @@ def get_qa_task(
         tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[context])
         tmp = tmp.select_columns(
             list(QUESTION_ID_COLUMNS | LONG_NQ_DEDUP_ID_COLUMNS | TASK_COLUMNS)
+        )
+        update_infodict(
+            tmp,
+            {
+                "task": {
+                    "dataset_name": dataset_name,
+                    "dataset_split": dataset_split,
+                    "context": context,
+                    "answer": answer,
+                    "subset_size": subset_size,
+                }
+            },
         )
         return tmp
