@@ -26,6 +26,9 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "include_context_ids": True,
     "label_smoothing_factor": 0.0,
     "do_repetition_augmentations": False,
+    "cross_attn_num_key_value_heads": None, # Only used for llama variants.
+    "cross_attn_attention_bias": False, # Only used for llama variants.
+    "is_llama": False # Set in the specific config below if using a llama variant.
 }
 
 MODEL_CONFIGS = {
@@ -131,6 +134,31 @@ MODEL_CONFIGS = {
         "gradient_checkpointing": True,
         "fp16": False,
         "bf16": True,
+    },
+    "crossattn_tulu-7b": {
+        "model_path": "allenai/tulu-2-dpo-7b",
+        "num_cross_attn_layers": 4,
+        "cross_attn_layers_stride": 6,
+        "cross_attn_shared_weights": False,
+        "train_batch_size": 1,
+        "test_batch_size": 1,
+        "skip_steps": 32,
+        "context_size": 4096,  # NOTE: Using 4096 here requires deepspeed (OOM)>
+        "learning_rate": 2e-4,
+        "weight_decay": 1e-2,
+        "lr_scheduler_type": "cosine",
+        "include_context_ids": True,
+        "cross_attn_dropout_prob": 0.25,
+        "cross_attn_final_layer": True,"cross_attn_shared_projections": True,
+        "cross_attn_hidden_size": 2048,
+        "cross_attn_num_attention_heads": 32,
+        "label_smoothing_factor": 0.0,
+        "gradient_checkpointing": True,
+        "fp16": False,
+        "bf16": True,
+        "cross_attn_num_key_value_heads": None,
+        "cross_attn_attention_bias": False,
+        "is_llama": True
     },
 }
 
