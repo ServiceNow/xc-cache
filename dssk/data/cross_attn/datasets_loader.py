@@ -126,7 +126,7 @@ class DatasetWithContextEmbedding(Dataset):
             # This branch only runs if self.include_context_ids is set.
             example = self.nq_dataset[i - len(self.nq_dataset)]
             do_fim_transform = random.choice([True, False])
-            input_str = f"context: {example['context']}"
+            input_str = f"|<C>|\n{example['context']}"
             if self.perform_augmentations and not do_fim_transform:
                 input_str = augment_ctx_str(input_str)
         else:
@@ -137,7 +137,7 @@ class DatasetWithContextEmbedding(Dataset):
             example = self.nq_dataset[i]
             question_str = example["question"]
             answer_str = example["answer"]
-            input_str = f"question: {question_str} \n answer: {answer_str}"
+            input_str = f"|<Q>|\n{question_str}\n|<A>|\n{answer_str}"
 
             if self.perform_augmentations:
                 input_str = augment_qa_str(input_str, question_str, answer_str)
@@ -274,14 +274,14 @@ class Collator:
         }
 
 
-def nq_prep(
+def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
     do_repetition_augmentations: bool,
     include_context_ids: Optional[bool] = False,
 ) -> Union[List[Dataset], Dataset]:
-    """Get and pre-process NQ dataset. This assumes data was previously prepared and context embeddings
+    """Get and pre-process training dataset. This assumes data was previously prepared and context embeddings
     are available in the dataset.
 
     Args:
@@ -295,24 +295,24 @@ def nq_prep(
         Union[List[Dataset], Dataset]: Processed datasets.
     """
 
-    nq_data = datasets.load_from_disk(data_dir)
+    data = datasets.load_from_disk(data_dir)
 
-    nq_training_data = nq_data["train"]
-    nq_validation_data = nq_data["val"]
+    training_data = data["train"]
+    validation_data = data["val"]
 
     tokenizer = get_tokenizer(
         tokenizer_path,
     )
 
     training_dataset = DatasetWithContextEmbedding(
-        nq_training_data,
+        training_data,
         context_length=context_length,
         tokenizer=tokenizer,
         perform_augmentations=do_repetition_augmentations,
         include_context_ids=include_context_ids,
     )
     validation_dataset = DatasetWithContextEmbedding(
-        nq_validation_data,
+        validation_data,
         context_length=context_length,
         tokenizer=tokenizer,
         perform_augmentations=False,

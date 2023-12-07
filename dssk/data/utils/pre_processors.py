@@ -61,7 +61,7 @@ class SquadV2PreProcessor:
         return {"input_ids": input_ids, "encoder_hidden_states": context_embedding}
 
 
-class NQPreProcessor:
+class TrainDataPreProcessor:
     # TODO: substitute/use dssk.data.text_formats
     def __init__(self, encoder: Encoder) -> None:
         self.encoder = encoder
@@ -70,23 +70,10 @@ class NQPreProcessor:
         # rank is the process id. E.g., a 4-GPU processing job would have ranks in [0:4].
         # Check dssk.data.utils.encoders.Encoder
 
-        context_str = [f"context: {row}" for row in examples["long_answer_clean"]]
-
-        # context_embedding = [emb.tolist() for emb in self.encoder.encode(context_str, rank)]
+        context_str = [f"context: {row}" for row in examples["context"]]
         context_embedding = self.encoder.encode(context_str, rank)
-        question_str = [row for row in examples["question_text"]]
-
-        answer_str = []
-        for i in range(len(context_str)):
-            if len(examples["short_answers_text"][i]) > 0:
-                answer = examples["short_answers_text"][i][0]
-            elif examples["yes_no_answer"][i] == 1:
-                answer = "Yes"
-            elif examples["yes_no_answer"][i] == 0:
-                answer = "No"
-            else:
-                answer = "Answer not in context."
-            answer_str.append(answer)
+        question_str = [row for row in examples["question"]]
+        answer_str = [row for row in examples["answer"]]
 
         return {
             "context": context_str,
