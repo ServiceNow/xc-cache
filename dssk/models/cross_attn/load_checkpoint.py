@@ -30,7 +30,6 @@ def load_checkpoint(ckp_path, device="cpu"):
         cross_attn_shared_projections=config["cross_attn_shared_projections"],
         cross_attn_hidden_size=config["cross_attn_hidden_size"],
         cross_attn_num_attention_heads=config["cross_attn_num_attention_heads"],
-        cross_attn_hidden_size=config["cross_attn_hidden_size"],
         cross_attn_num_key_value_heads=config["cross_attn_num_key_value_heads"],
         cross_attn_attention_bias=config["cross_attn_attention_bias"],
         is_llama=config["is_llama"],
