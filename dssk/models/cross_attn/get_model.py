@@ -2,6 +2,7 @@ from typing import Optional, Union
 import torch
 from transformers import AutoModelForCausalLM, PreTrainedModel
 from dssk.models.cross_attn.cross_attn_gptbigcode import CrossAttnGPTBigCode
+from dssk.models.cross_attn.cross_attn_llama import CrossAttnLlama
 
 
 def get_model(
@@ -19,6 +20,10 @@ def get_model(
     cross_attn_shared_projections: Optional[bool] = False,
     cross_attn_hidden_size: Optional[int] = None,
     cross_attn_num_attention_heads: Optional[int] = None,
+    randomly_initialize_decoder: Optional[bool] = False,
+    is_llama: Optional[bool] = False,
+    cross_attn_num_key_value_heads: Optional[int] = None,
+    cross_attn_attention_bias: Optional[bool] = False,
 ) -> PreTrainedModel:
     """Helper function to get models..
     For models that are instances of GPTBigCodeForCausalLM, optionally
@@ -39,24 +44,53 @@ def get_model(
         cross_attn_shared_projections (Optional[bool]): Whether to share parameters for query and key projections. Defaults to False.
         cross_attn_hidden_size (Optional[int]): If None (default), will use the base decoder's hidden size.
         cross_attn_num_attention_heads (Optional[int]): If None (default), will use the base decoder's number of attn heads.
+        randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decider. Defaults to False.
+        is_llama (Optional[bool]): Whether the model is a llama variation.
+        cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
+        cross_attn_attention_bias (Optional[bool]): = Only used for Llama variations. Whether to train bias parameters.
 
     Returns:
         PreTrainedModel: Pre-trained model.
     """
 
+    cross_attn_layers_stride: int = 2,
+    cross_attn_shared_weights: bool = True,
+    cross_attn_dropout_prob: Optional[float] = 0.0,
+    cross_attn_final_layer: Optional[bool] = False,
+    cross_attn_shared_projections: Optional[bool] = False,
+    cross_attn_hidden_size: Optional[int] = None,
+    cross_attn_num_attention_heads: Optional[int] = None,
+    
+
     if n_cross_attn_layers > 0:
-        model = CrossAttnGPTBigCode(
-            model_path,
-            n_cross_attn_layers=n_cross_attn_layers,
-            cross_attn_layers_stride=cross_attn_layers_stride,
-            cross_attn_shared_weights=cross_attn_shared_weights,
-            cross_attn_dropout_prob=cross_attn_dropout_prob,
-            cross_attn_final_layer=cross_attn_final_layer,
-            cross_attn_shared_projections=cross_attn_shared_projections,
-            cross_attn_hidden_size=cross_attn_hidden_size,
-            cross_attn_num_attention_heads=cross_attn_num_attention_heads,
-            randomly_initialize_decoder=False,
-        )
+        if is_llama:
+            model = CrossAttnLlama(
+                model_path,
+                n_cross_attn_layers=n_cross_attn_layers,
+                cross_attn_layers_stride=cross_attn_layers_stride,
+                cross_attn_shared_weights=cross_attn_shared_weights,
+                cross_attn_dropout_prob=cross_attn_dropout_prob,
+                cross_attn_final_layer=cross_attn_final_layer,
+                cross_attn_shared_projections=cross_attn_shared_projections,
+                cross_attn_hidden_size=cross_attn_hidden_size,
+                cross_attn_num_attention_heads=cross_attn_num_attention_heads,
+                cross_attn_num_key_value_heads=cross_attn_num_key_value_heads,
+                cross_attn_attention_bias=cross_attn_attention_bias,
+                randomly_initialize_decoder=randomly_initialize_decoder,
+            )
+        else:
+            model = CrossAttnGPTBigCode(
+                model_path,
+                n_cross_attn_layers=n_cross_attn_layers,
+                cross_attn_layers_stride=cross_attn_layers_stride,
+                cross_attn_shared_weights=cross_attn_shared_weights,
+                cross_attn_dropout_prob=cross_attn_dropout_prob,
+                cross_attn_final_layer=cross_attn_final_layer,
+                cross_attn_shared_projections=cross_attn_shared_projections,
+                cross_attn_hidden_size=cross_attn_hidden_size,
+                cross_attn_num_attention_heads=cross_attn_num_attention_heads,
+                randomly_initialize_decoder=randomly_initialize_decoder,
+            )
         if device is not None:
             model = model.to(device)
         model.bos_token_id = bos_token_id
