@@ -3,8 +3,9 @@ from typing import Any, Optional
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, T5Tokenizer
 
+from baselines.fid.src.t5_wrapper import FiDT5
+
 from dssk.models.cross_attn.load_checkpoint import load_checkpoint
-from dssk.models.fid.t5_wrapper import FiDT5
 from dssk.inference.abstract_lm_interface import AbstractLMInterface
 
 
