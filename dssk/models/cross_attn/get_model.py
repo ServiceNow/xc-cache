@@ -44,7 +44,7 @@ def get_model(
         cross_attn_shared_projections (Optional[bool]): Whether to share parameters for query and key projections. Defaults to False.
         cross_attn_hidden_size (Optional[int]): If None (default), will use the base decoder's hidden size.
         cross_attn_num_attention_heads (Optional[int]): If None (default), will use the base decoder's number of attn heads.
-        randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decider. Defaults to False.
+        randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decoder. Defaults to False.
         is_llama (Optional[bool]): Whether the model is a llama variation.
         cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
         cross_attn_attention_bias (Optional[bool]): = Only used for Llama variations. Whether to train bias parameters.
