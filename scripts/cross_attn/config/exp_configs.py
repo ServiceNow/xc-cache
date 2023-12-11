@@ -25,7 +25,6 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "gradient_checkpointing": True,
     "include_context_ids": True,
     "label_smoothing_factor": 0.0,
-    "do_repetition_augmentations": False,
     "cross_attn_num_key_value_heads": None, # Only used for llama variants.
     "cross_attn_attention_bias": False, # Only used for llama variants.
     "is_llama": False # Set in the specific config below if using a llama variant.
