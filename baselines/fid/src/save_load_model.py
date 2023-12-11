@@ -11,7 +11,7 @@ import torch
 
 from pathlib import Path
 
-from src.schedulers import FixedScheduler, WarmupLinearScheduler
+from baselines.fid.src.schedulers import FixedScheduler, WarmupLinearScheduler
 
 
 def get_checkpoint_path(opt):

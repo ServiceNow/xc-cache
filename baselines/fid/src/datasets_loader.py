@@ -6,8 +6,7 @@
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
 import torch
-import random
-import json
+from random import shuffle
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -29,15 +28,6 @@ class Dataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data)
 
-    def get_target(self, example):
-        if "target" in example:
-            target = example["target"]
-            return target + " </s>"
-        elif "answers" in example:
-            return random.choice(example["answers"]) + " </s>"
-        else:
-            return None
-
     def __getitem__(self, index):
         example = self.data[index]
         question = self.question_prefix + " " + example["question"]
@@ -58,7 +48,7 @@ class Dataset(torch.utils.data.Dataset):
         return {
             "index": index,
             "question": question,
-            "target": target,
+            "answer": target,
             "passages": passages,
             "scores": scores,
         }
@@ -96,14 +86,38 @@ class Collator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
 
-    def __call__(self, batch):
-        assert batch[0]["target"] is not None
-        index = torch.tensor([ex["index"] for ex in batch])
-        target = [ex["target"] for ex in batch]
+    def _get_target(self, example):
+        if "answer" in example:
+            return example["answer"]
+            # return target + " </s>" no need to add eos, already added by tokenizer
+
+        else:
+            return None
+
+    def _format_input(self, example):
+        n_contexts = len(example["contexts_list"])
+        if n_contexts < 1:
+            passages = [f"question: {example['question']}"]
+
+        else:
+            # shuffle to be robust to variation in gold context position
+            ctx_index = list(range(n_contexts))
+            shuffle(ctx_index)
+
+            passages = [
+                f"question: {example['question']} title: {example['titles_list'][i]} context: {example['contexts_list'][i]}"
+                for i in ctx_index
+            ]
+
+        return passages
+
+    def __call__(self, batch_list):
+        index = torch.tensor([ex["sample_idx"] for ex in batch_list])
+        target = [self._get_target(ex) for ex in batch_list]
         target = self.tokenizer.batch_encode_plus(
             target,
             max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
-            pad_to_max_length=True,
+            padding="max_length",
             return_tensors="pt",
             truncation=True if self.answer_maxlength > 0 else False,
         )
@@ -111,38 +125,7 @@ class Collator(object):
         target_mask = target["attention_mask"].bool()
         target_ids = target_ids.masked_fill(~target_mask, -100)
 
-        def append_question(example):
-            if example["passages"] is None:
-                return [example["question"]]
-            return [example["question"] + " " + t for t in example["passages"]]
-
-        text_passages = [append_question(example) for example in batch]
+        text_passages = [self._format_input(example) for example in batch_list]
         passage_ids, passage_masks = encode_passages(text_passages, self.tokenizer)
 
         return (index, target_ids, target_mask, passage_ids, passage_masks)
-
-
-def load_data(data_path=None, global_rank=-1, world_size=-1):
-    assert data_path
-    if data_path.endswith(".jsonl"):
-        data = open(data_path, "r")
-    elif data_path.endswith(".json"):
-        with open(data_path, "r") as fin:
-            data = json.load(fin)
-    examples = []
-    for k, example in enumerate(data):
-        if global_rank > -1 and not k % world_size == global_rank:
-            continue
-        if data_path is not None and data_path.endswith(".jsonl"):
-            example = json.loads(example)
-        if "id" not in example:
-            example["id"] = k
-        for c in example["ctxs"]:
-            if "score" not in c:
-                c["score"] = 1.0 / (k + 1)
-        examples.append(example)
-
-    if data_path is not None and data_path.endswith(".jsonl"):
-        data.close()
-
-    return examples

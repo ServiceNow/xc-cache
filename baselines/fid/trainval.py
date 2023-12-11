@@ -12,15 +12,18 @@ import transformers
 import os
 
 from pathlib import Path
+from datasets import load_dataset
 
-from src.datasets_loader import Collator, Dataset, load_data
-from src.t5_wrapper import FiDT5
-from src.save_load_model import load, set_optim
-from trainer import train
-from options import Options
+from baselines.fid.src.datasets_loader import Collator
+from baselines.fid.src.t5_wrapper import FiDT5
+from baselines.fid.src.save_load_model import load, set_optim
+from baselines.fid.trainer import train
+from baselines.fid.options import Options
 
 
 def init_logger(is_main=True, is_distributed=False, filename=None):
+    logger = logging.getLogger()
+
     if is_distributed:
         torch.distributed.barrier()
     handlers = [logging.StreamHandler(sys.stdout)]
@@ -123,25 +126,17 @@ if __name__ == "__main__":
 
     # load data
     tokenizer = transformers.T5Tokenizer.from_pretrained(
-        "t5-base", model_max_length=opt.text_maxlength
+        model_name, model_max_length=opt.text_maxlength
     )
     collator = Collator(opt.text_maxlength, tokenizer, answer_maxlength=opt.answer_maxlength)
 
-    # TODO: replace with our dataloaders
     # use global rank and world size to split the eval set on multiple gpus
-    train_examples = load_data(
-        opt.train_data,
-        global_rank=opt.global_rank,
-        world_size=opt.world_size,
+    train_dataset = load_dataset(
+        f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="train"
     )
-    train_dataset = Dataset(train_examples, opt.n_context)
-    # use golbal rank and world size to split the eval set on multiple gpus
-    eval_examples = load_data(
-        opt.eval_data,
-        global_rank=opt.global_rank,
-        world_size=opt.world_size,
+    eval_dataset = load_dataset(
+        f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="val"
     )
-    eval_dataset = Dataset(eval_examples, opt.n_context)
 
     if not checkpoint_exists and opt.model_path == "none":
         t5 = transformers.T5ForConditionalGeneration.from_pretrained(model_name)
@@ -153,12 +148,12 @@ if __name__ == "__main__":
     elif opt.model_path == "none":
         load_path = checkpoint_path / "checkpoint" / "latest"
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, load_path, opt, reset_params=False
+            FiDT5, load_path, opt, logger, reset_params=False
         )
         logger.info(f"Model loaded from {load_path}")
     else:
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, opt.model_path, opt, reset_params=True
+            FiDT5, opt.model_path, opt, logger, reset_params=True
         )
         logger.info(f"Model loaded from {opt.model_path}")
 

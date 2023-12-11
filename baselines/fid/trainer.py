@@ -5,16 +5,15 @@
 # This source code is licensed under the license found in the
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
-import logging
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from src.save_load_model import save
-from src.metrics import average_main, ems, weighted_average
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Subset
+from tqdm import tqdm
+
+from baselines.fid.src.save_load_model import save
+from baselines.fid.src.metrics import average_main, ems, weighted_average
 from dssk.utils.scripting import set_random_seed
-
-logger = logging.getLogger()
 
 
 def train(
@@ -29,6 +28,7 @@ def train(
     collator,
     best_dev_em,
     checkpoint_path,
+    logger,
 ):
     # TODO: replace with wandb logging
     # if opt.is_main:
@@ -47,7 +47,7 @@ def train(
         sampler=train_sampler,
         batch_size=opt.per_gpu_batch_size,
         drop_last=True,
-        num_workers=10,
+        num_workers=opt.n_workers,
         collate_fn=collator,
     )
 
@@ -56,7 +56,9 @@ def train(
     model.train()
     while step < opt.total_steps:
         epoch += 1
-        for i, batch in enumerate(train_dataloader):
+
+        pbar = tqdm(train_dataloader)
+        for batch in pbar:
             step += 1
             (idx, labels, _, context_ids, context_mask) = batch
 
@@ -103,6 +105,7 @@ def train(
                     # if tb_logger is not None:
                     #     tb_logger.add_scalar("Evaluation", dev_em, step)
                     #     tb_logger.add_scalar("Training", curr_loss / (opt.eval_freq), step)
+                    pbar.set_description(f"Loss: {curr_loss / (opt.eval_freq)}, val EM: {dev_em}")
                     curr_loss = 0.0
 
             if opt.is_main and step % opt.save_freq == 0:
@@ -121,13 +124,16 @@ def train(
 
 
 def evaluate(model, dataset, tokenizer, collator, opt):
-    sampler = SequentialSampler(dataset)
+    # evaluate on 100 random samples
+    subset = Subset(dataset, np.random.choice(len(dataset), 100, replace=False).tolist())
+    sampler = SequentialSampler(subset)
+
     dataloader = DataLoader(
-        dataset,
+        subset,
         sampler=sampler,
         batch_size=opt.per_gpu_batch_size,
         drop_last=False,
-        num_workers=10,
+        num_workers=opt.n_workers,
         collate_fn=collator,
     )
     model.eval()
@@ -135,7 +141,7 @@ def evaluate(model, dataset, tokenizer, collator, opt):
     exactmatch = []
     model = model.module if hasattr(model, "module") else model
     with torch.no_grad():
-        for i, batch in enumerate(dataloader):
+        for batch in tqdm(dataloader):
             (idx, _, _, context_ids, context_mask) = batch
 
             outputs = model.generate(
@@ -144,7 +150,7 @@ def evaluate(model, dataset, tokenizer, collator, opt):
 
             for k, o in enumerate(outputs):
                 ans = tokenizer.decode(o, skip_special_tokens=True)
-                gold = dataset.get_example(idx[k])["answers"]
+                gold = dataset[idx[k].item()]["answer"]
                 score = ems(ans, gold)
                 total += 1
                 exactmatch.append(score)
