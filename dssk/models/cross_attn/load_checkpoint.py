@@ -32,7 +32,7 @@ def load_checkpoint(ckp_path, device="cpu"):
         cross_attn_num_attention_heads=config["cross_attn_num_attention_heads"],
         cross_attn_num_key_value_heads=config["cross_attn_num_key_value_heads"],
         cross_attn_attention_bias=config["cross_attn_attention_bias"],
-        is_llama=config["is_llama"],
+        model_type=config["model_type"],
     )
 
     # load weights from checkpoint (might be split into multiple files)
