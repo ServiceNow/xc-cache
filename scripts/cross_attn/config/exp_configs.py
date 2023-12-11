@@ -25,9 +25,9 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "gradient_checkpointing": True,
     "include_context_ids": True,
     "label_smoothing_factor": 0.0,
-    "cross_attn_num_key_value_heads": None, # Only used for llama variants.
-    "cross_attn_attention_bias": False, # Only used for llama variants.
-    "model_type": "gptbigcode" # Set in the specific config below if using a llama variant.
+    "cross_attn_num_key_value_heads": None,  # Only used for llama variants.
+    "cross_attn_attention_bias": False,  # Only used for llama variants.
+    "model_type": "gptbigcode",  # Set in the specific config below if using a llama variant.
 }
 
 MODEL_CONFIGS = {
@@ -148,7 +148,8 @@ MODEL_CONFIGS = {
         "lr_scheduler_type": "cosine",
         "include_context_ids": True,
         "cross_attn_dropout_prob": 0.25,
-        "cross_attn_final_layer": True,"cross_attn_shared_projections": True,
+        "cross_attn_final_layer": True,
+        "cross_attn_shared_projections": True,
         "cross_attn_hidden_size": 2048,
         "cross_attn_num_attention_heads": 32,
         "label_smoothing_factor": 0.0,
@@ -157,7 +158,7 @@ MODEL_CONFIGS = {
         "bf16": True,
         "cross_attn_num_key_value_heads": None,
         "cross_attn_attention_bias": False,
-        "model_type": "llama"
+        "model_type": "llama",
     },
 }
 

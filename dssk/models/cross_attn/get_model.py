@@ -53,17 +53,16 @@ def get_model(
         PreTrainedModel: Pre-trained model.
     """
 
-    cross_attn_layers_stride: int = 2,
-    cross_attn_shared_weights: bool = True,
-    cross_attn_dropout_prob: Optional[float] = 0.0,
-    cross_attn_final_layer: Optional[bool] = False,
-    cross_attn_shared_projections: Optional[bool] = False,
-    cross_attn_hidden_size: Optional[int] = None,
-    cross_attn_num_attention_heads: Optional[int] = None,
-    
+    cross_attn_layers_stride: int = (2,)
+    cross_attn_shared_weights: bool = (True,)
+    cross_attn_dropout_prob: Optional[float] = (0.0,)
+    cross_attn_final_layer: Optional[bool] = (False,)
+    cross_attn_shared_projections: Optional[bool] = (False,)
+    cross_attn_hidden_size: Optional[int] = (None,)
+    cross_attn_num_attention_heads: Optional[int] = (None,)
 
     if n_cross_attn_layers > 0:
-        if model_type is "llama":
+        if model_type == "llama":
             model = CrossAttnLlama(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
@@ -78,7 +77,7 @@ def get_model(
                 cross_attn_attention_bias=cross_attn_attention_bias,
                 randomly_initialize_decoder=randomly_initialize_decoder,
             )
-        elif model_type is "gptbigcode":
+        elif model_type == "gptbigcode":
             model = CrossAttnGPTBigCode(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
@@ -92,8 +91,10 @@ def get_model(
                 randomly_initialize_decoder=randomly_initialize_decoder,
             )
         else:
-            raise ValueError("We currently support the following model types: llama, and gptbigcode")
-    
+            raise ValueError(
+                "We currently support the following model types: llama, and gptbigcode"
+            )
+
         if device is not None:
             model = model.to(device)
         model.bos_token_id = bos_token_id
