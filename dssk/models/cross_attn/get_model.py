@@ -21,7 +21,7 @@ def get_model(
     cross_attn_hidden_size: Optional[int] = None,
     cross_attn_num_attention_heads: Optional[int] = None,
     randomly_initialize_decoder: Optional[bool] = False,
-    is_llama: Optional[bool] = False,
+    model_type: Optional[str] = "llama",
     cross_attn_num_key_value_heads: Optional[int] = None,
     cross_attn_attention_bias: Optional[bool] = False,
 ) -> PreTrainedModel:
@@ -45,7 +45,7 @@ def get_model(
         cross_attn_hidden_size (Optional[int]): If None (default), will use the base decoder's hidden size.
         cross_attn_num_attention_heads (Optional[int]): If None (default), will use the base decoder's number of attn heads.
         randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decoder. Defaults to False.
-        is_llama (Optional[bool]): Whether the model is a llama variation.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gptbigcode"}.
         cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
         cross_attn_attention_bias (Optional[bool]): = Only used for Llama variations. Whether to train bias parameters.
 
@@ -63,7 +63,7 @@ def get_model(
     
 
     if n_cross_attn_layers > 0:
-        if is_llama:
+        if model_type is "llama":
             model = CrossAttnLlama(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
@@ -78,7 +78,7 @@ def get_model(
                 cross_attn_attention_bias=cross_attn_attention_bias,
                 randomly_initialize_decoder=randomly_initialize_decoder,
             )
-        else:
+        elif model_type is "gptbigcode":
             model = CrossAttnGPTBigCode(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
@@ -91,6 +91,9 @@ def get_model(
                 cross_attn_num_attention_heads=cross_attn_num_attention_heads,
                 randomly_initialize_decoder=randomly_initialize_decoder,
             )
+        else:
+            raise ValueError("We currently support the following model types: llama, and gptbigcode")
+    
         if device is not None:
             model = model.to(device)
         model.bos_token_id = bos_token_id

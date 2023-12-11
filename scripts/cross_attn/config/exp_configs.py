@@ -27,7 +27,7 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "label_smoothing_factor": 0.0,
     "cross_attn_num_key_value_heads": None, # Only used for llama variants.
     "cross_attn_attention_bias": False, # Only used for llama variants.
-    "is_llama": False # Set in the specific config below if using a llama variant.
+    "model_type": "gptbigcode" # Set in the specific config below if using a llama variant.
 }
 
 MODEL_CONFIGS = {
@@ -157,7 +157,7 @@ MODEL_CONFIGS = {
         "bf16": True,
         "cross_attn_num_key_value_heads": None,
         "cross_attn_attention_bias": False,
-        "is_llama": True
+        "model_type": "llama"
     },
 }
 
