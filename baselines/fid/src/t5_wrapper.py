@@ -5,10 +5,8 @@
 # This source code is licensed under the license found in the
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
-import types
 import torch
 import transformers
-import torch.nn.functional as F
 from torch import nn
 
 
@@ -80,15 +78,6 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         for mod in self.encoder.encoder.block:
             mod.use_checkpoint = use_checkpoint
 
-    def overwrite_forward_crossattention(self):
-        """
-        Replace cross-attention forward function, only used to save
-        cross-attention scores.
-        """
-        for mod in self.decoder.block:
-            attn = mod.layer[1].EncDecAttention
-            attn.forward = types.MethodType(cross_attention_forward, attn)
-
 
 class EncoderWrapper(torch.nn.Module):
     """
@@ -115,7 +104,7 @@ class EncoderWrapper(torch.nn.Module):
         input_ids = input_ids.view(bsz * self.n_passages, passage_length)
         attention_mask = attention_mask.view(bsz * self.n_passages, passage_length)
         outputs = self.encoder(input_ids, attention_mask, **kwargs)
-        outputs = (outputs[0].view(bsz, self.n_passages * passage_length, -1),) + outputs[1:]
+        outputs.last_hidden_state = outputs[0].view(bsz, self.n_passages * passage_length, -1)
         return outputs
 
 
@@ -161,66 +150,3 @@ def apply_checkpoint_wrapper(t5stack, use_checkpoint):
         block.append(wrapped_mod)
     block = nn.ModuleList(block)
     t5stack.block = block
-
-
-def cross_attention_forward(
-    self,
-    input,
-    mask=None,
-    kv=None,
-    position_bias=None,
-    past_key_value_state=None,
-    head_mask=None,
-    query_length=None,
-    use_cache=False,
-    output_attentions=False,
-):
-    """
-    This only works for computing cross attention over the input
-    """
-    assert kv is not None
-    assert head_mask is None
-    assert position_bias is not None or self.has_relative_attention_bias
-
-    bsz, qlen, _ = input.size()
-    n_heads, d_heads = self.n_heads, self.d_kv
-    klen = kv.size(1)
-
-    q = self.q(input).view(bsz, -1, n_heads, d_heads).transpose(1, 2)
-    if past_key_value_state is None:
-        k = self.k(kv).view(bsz, -1, n_heads, d_heads).transpose(1, 2)
-        v = self.v(kv).view(bsz, -1, n_heads, d_heads).transpose(1, 2)
-    else:
-        k, v = past_key_value_state
-
-    scores = torch.einsum("bnqd,bnkd->bnqk", q, k)
-
-    if mask is not None:
-        scores += mask
-
-    if position_bias is None:
-        position_bias = self.compute_bias(qlen, klen)
-    scores += position_bias
-
-    if self.score_storage is None:
-        self.score_storage = scores
-
-    attn = F.softmax(scores.float(), dim=-1).type_as(scores)
-    attn = F.dropout(attn, p=self.dropout, training=self.training)
-
-    output = torch.matmul(attn, v)
-    output = output.transpose(1, 2).contiguous().view(bsz, -1, self.inner_dim)
-    output = self.o(output)
-
-    if use_cache:
-        output = (output,) + ((k, v),)
-    else:
-        output = (output,) + (None,)
-
-    if output_attentions:
-        output = output + (attn,)
-
-    if self.has_relative_attention_bias:
-        output = output + (position_bias,)
-
-    return output
