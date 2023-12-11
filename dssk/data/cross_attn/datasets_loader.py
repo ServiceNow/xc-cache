@@ -9,32 +9,6 @@ from typing import List, Dict, Union, Optional
 from dssk.models.get_tokenizer import get_tokenizer
 
 
-def augment_qa_str(input_str: str, question_str: str, answer_str: str) -> str:
-    _augmentation_mode = random.choice(["none", "repeat_answer", "repeat_question", "repeat_both"])
-
-    if _augmentation_mode == "none":
-        to_append_str = ""
-    elif _augmentation_mode == "repeat_answer":
-        to_append_str = f" \n repeat answer: \n {answer_str}"
-    elif _augmentation_mode == "repeat_question":
-        to_append_str = f" \n repeat question: \n {question_str}"
-    elif _augmentation_mode == "repeat_both":
-        to_append_str = f" \n repeat both question and answer: \n {input_str}"
-
-    return input_str + to_append_str
-
-
-def augment_ctx_str(context_str: str) -> str:
-    _augmentation_mode = random.choice(["none", "repeat_context"])
-
-    if _augmentation_mode == "none":
-        to_append_str = ""
-    elif _augmentation_mode == "repeat_context":
-        to_append_str = f" \n repeat context: \n {context_str}"
-
-    return context_str + to_append_str
-
-
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
 def apply_fim_transform(
     input_tokens: List[int], suffix_token_id: int, prefix_token_id: int, middle_token_id: int
@@ -81,7 +55,6 @@ class DatasetWithContextEmbedding(Dataset):
         context_length: int,
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
-        perform_augmentations: bool,
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
         self.train_dataset = train_dataset.with_format("torch")
@@ -95,7 +68,6 @@ class DatasetWithContextEmbedding(Dataset):
         # In the second time, we return the context tokens to perform causal lm on, and include the context embeddings as well.
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
-        self.perform_augmentations = perform_augmentations
 
     def __len__(self) -> int:
         """Returns the length of the dataset which matches that of the base dataset.
@@ -125,8 +97,6 @@ class DatasetWithContextEmbedding(Dataset):
             example = self.train_dataset[i - len(self.train_dataset)]
             do_fim_transform = random.choice([True, False])
             input_str = f"|<C>|\n{example['context']}"
-            if self.perform_augmentations and not do_fim_transform:
-                input_str = augment_ctx_str(input_str)
         else:
             # This branch runs if self.include_context_ids is not set
             # Or if self.include_context_ids is set but we are in an index for
@@ -136,9 +106,6 @@ class DatasetWithContextEmbedding(Dataset):
             question_str = example["question"]
             answer_str = example["answer"]
             input_str = f"|<Q>|\n{question_str}\n|<A>|\n{answer_str}"
-
-            if self.perform_augmentations:
-                input_str = augment_qa_str(input_str, question_str, answer_str)
 
         input_ids = self.tokenizer(
             input_str,
@@ -242,7 +209,6 @@ def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
-    do_repetition_augmentations: bool,
     data_cache_dir: str = None,
     include_context_ids: Optional[bool] = False,
 ) -> Union[List[Dataset], Dataset]:
@@ -253,7 +219,6 @@ def data_prep(
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
-        do_repetition_augmentations (bool): Whether to perform repetition augmentations.
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
 
@@ -277,14 +242,12 @@ def data_prep(
         training_data,
         context_length=context_length,
         tokenizer=tokenizer,
-        perform_augmentations=do_repetition_augmentations,
         include_context_ids=include_context_ids,
     )
     validation_dataset = DatasetWithContextEmbedding(
         validation_data,
         context_length=context_length,
         tokenizer=tokenizer,
-        perform_augmentations=False,
         include_context_ids=False,
     )
 
