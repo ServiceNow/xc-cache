@@ -1,4 +1,5 @@
 # Adapted from https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+# TODO: BE COMPLIANT WITH Apache License, Version 2.0 .
 """ PyTorch LLaMA model."""
 import math
 import warnings
