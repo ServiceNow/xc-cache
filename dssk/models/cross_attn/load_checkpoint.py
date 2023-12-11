@@ -30,6 +30,9 @@ def load_checkpoint(ckp_path, device="cpu"):
         cross_attn_shared_projections=config["cross_attn_shared_projections"],
         cross_attn_hidden_size=config["cross_attn_hidden_size"],
         cross_attn_num_attention_heads=config["cross_attn_num_attention_heads"],
+        cross_attn_num_key_value_heads=config["cross_attn_num_key_value_heads"],
+        cross_attn_attention_bias=config["cross_attn_attention_bias"],
+        model_type=config["model_type"],
     )
 
     # load weights from checkpoint (might be split into multiple files)

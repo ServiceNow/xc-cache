@@ -8,34 +8,6 @@ from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
 
-ENCODER_EMBEDDING_PADDING_VALUE = -100.0
-
-
-def augment_qa_str(input_str: str, question_str: str, answer_str: str) -> str:
-    _augmentation_mode = random.choice(["none", "repeat_answer", "repeat_question", "repeat_both"])
-
-    if _augmentation_mode == "none":
-        to_append_str = ""
-    elif _augmentation_mode == "repeat_answer":
-        to_append_str = f" \n repeat answer: \n {answer_str}"
-    elif _augmentation_mode == "repeat_question":
-        to_append_str = f" \n repeat question: \n {question_str}"
-    elif _augmentation_mode == "repeat_both":
-        to_append_str = f" \n repeat both question and answer: \n {input_str}"
-
-    return input_str + to_append_str
-
-
-def augment_ctx_str(context_str: str) -> str:
-    _augmentation_mode = random.choice(["none", "repeat_context"])
-
-    if _augmentation_mode == "none":
-        to_append_str = ""
-    elif _augmentation_mode == "repeat_context":
-        to_append_str = f" \n repeat context: \n {context_str}"
-
-    return context_str + to_append_str
-
 
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
 def apply_fim_transform(
@@ -79,14 +51,13 @@ class DatasetWithContextEmbedding(Dataset):
 
     def __init__(
         self,
-        nq_dataset: datasets.Dataset,
+        train_dataset: datasets.Dataset,
         context_length: int,
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
-        perform_augmentations: bool,
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
-        self.nq_dataset = nq_dataset.with_format("torch")
+        self.train_dataset = train_dataset.with_format("torch")
         self.context_length = context_length
         self.tokenizer = tokenizer
         self.fim_prefix_token_id = self.tokenizer.encode("<fim_prefix>")[0]
@@ -97,7 +68,6 @@ class DatasetWithContextEmbedding(Dataset):
         # In the second time, we return the context tokens to perform causal lm on, and include the context embeddings as well.
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
-        self.perform_augmentations = perform_augmentations
 
     def __len__(self) -> int:
         """Returns the length of the dataset which matches that of the base dataset.
@@ -108,9 +78,9 @@ class DatasetWithContextEmbedding(Dataset):
         if self.include_context_ids:
             # If include_context_ids is set, we go over the data twice.
             # We first read Q&A pairs, and then contexts.
-            return 2 * len(self.nq_dataset)
+            return 2 * len(self.train_dataset)
         else:
-            return len(self.nq_dataset)
+            return len(self.train_dataset)
 
     def __getitem__(self, i: int) -> List[Dict]:
         """Reads from the base datasets and returns preprocessed inputs.
@@ -122,25 +92,20 @@ class DatasetWithContextEmbedding(Dataset):
             List[Dict]: Processed examples.
         """
 
-        if i >= len(self.nq_dataset):
+        if i >= len(self.train_dataset):
             # This branch only runs if self.include_context_ids is set.
-            example = self.nq_dataset[i - len(self.nq_dataset)]
+            example = self.train_dataset[i - len(self.train_dataset)]
             do_fim_transform = random.choice([True, False])
-            input_str = f"context: {example['context']}"
-            if self.perform_augmentations and not do_fim_transform:
-                input_str = augment_ctx_str(input_str)
+            input_str = f"|<C>|\n{example['context']}"
         else:
             # This branch runs if self.include_context_ids is not set
             # Or if self.include_context_ids is set but we are in an index for
             # the first iteration over the data.
             do_fim_transform = False  # No FIM for Q&A inputs.
-            example = self.nq_dataset[i]
+            example = self.train_dataset[i]
             question_str = example["question"]
             answer_str = example["answer"]
-            input_str = f"question: {question_str} \n answer: {answer_str}"
-
-            if self.perform_augmentations:
-                input_str = augment_qa_str(input_str, question_str, answer_str)
+            input_str = f"|<Q>|\n{question_str}\n|<A>|\n{answer_str}"
 
         input_ids = self.tokenizer(
             input_str,
@@ -156,11 +121,17 @@ class DatasetWithContextEmbedding(Dataset):
                 self.fim_suffix_token_id,
             )
 
-        context_embedding = example["encoder_hidden_states"]
+        # Context ids are used for embedding during training.
+        context_str = f"|<C>|\n{example['context']}"
+        context_input_ids = self.tokenizer(
+            context_str,
+            max_length=self.context_length,
+            truncation=True,
+        )["input_ids"]
 
         return {
             "input_ids": input_ids,
-            "encoder_hidden_states": context_embedding,
+            "context_input_ids": context_input_ids,
         }
 
 
@@ -206,14 +177,23 @@ class Collator:
             return_tensors="pt",
         )
 
-        # Besides padding, this will also truncate to sequences to the max. length.
-        encoder_hidden_states_and_masks = self._pad_encoder_hidden_states(
-            [el["encoder_hidden_states"] for el in batch], truncate=True
+        context_input_ids_list = [el["context_input_ids"] for el in batch]
+
+        tokenized_context_ids = self.tokenizer.pad(
+            {"input_ids": context_input_ids_list},
+            max_length=self.maximum_length,
+            padding="longest",
+            return_tensors="pt",
         )
 
-        processed_batch.update(encoder_hidden_states_and_masks)
+        processed_batch.update(
+            {
+                "context_input_ids": tokenized_context_ids["input_ids"],
+                "encoder_attention_mask": tokenized_context_ids["attention_mask"],
+            }
+        )
 
-        # We repeate what is done in hugging face and labels are a simple clone of input ids
+        # We repeat what is done in hugging face and labels are a simple clone of input ids
         # and shifiting happens inside the model's Forward during loss computation.
         # C.f. https://github.com/huggingface/transformers/blob/main/src/transformers/data/data_collator.py#L745-L748
         # C.f. https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_bigcode/modeling_gpt_bigcode.py#L803-L806
@@ -226,96 +206,50 @@ class Collator:
 
         return processed_batch
 
-    def _pad_encoder_hidden_states(
-        self, encoder_hidden_states: List[torch.Tensor], truncate: Optional[bool] = True
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Pads encoder hidden states with dummy vectors and creates padding masks.
 
-        Args:
-                encoder_hidden_states (List[torch.Tensor]): List of tensors with encoder hidden states.
-                truncate (Optional[bool]): Whether to truncate sequences of hidden states to max. length.
-
-            Returns:
-                Dict[str, torch.Tensor]: Batches of encoder hidden states, and padding masks.
-        """
-
-        # Creates tensors out of nested lists of features
-        encoder_hidden_states_tensors = [torch.Tensor(el) for el in encoder_hidden_states]
-
-        maximum_batch_length = max([el.size(0) for el in encoder_hidden_states_tensors])
-        if truncate:
-            maximum_batch_length = min(maximum_batch_length, self.maximum_length)
-
-        padding_vectors = ENCODER_EMBEDDING_PADDING_VALUE * torch.ones(
-            maximum_batch_length, encoder_hidden_states_tensors[0].size(-1)
-        )
-
-        hidden_states_list, attn_masks_list = [], []
-
-        for hidden_states in encoder_hidden_states_tensors:
-            padding_mask = torch.ones(hidden_states.size(0))
-            amount_padding_needed = maximum_batch_length - hidden_states.size(0)
-
-            if amount_padding_needed > 0:
-                hidden_states = torch.cat([hidden_states, padding_vectors[:amount_padding_needed]])
-                padding_mask = torch.cat([padding_mask, torch.zeros(amount_padding_needed)])
-            else:
-                hidden_states = hidden_states[:maximum_batch_length, ...]
-                padding_mask = padding_mask[:maximum_batch_length, ...]
-
-            # We create batch dimension to enable concatenation.
-            hidden_states_list.append(hidden_states[None, ...])
-            attn_masks_list.append(padding_mask[None, ...])
-
-        return {
-            "encoder_hidden_states": torch.cat(hidden_states_list),
-            "encoder_attention_mask": torch.cat(attn_masks_list),
-        }
-
-
-def nq_prep(
+def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
-    do_repetition_augmentations: bool,
+    data_cache_dir: str = None,
     include_context_ids: Optional[bool] = False,
 ) -> Union[List[Dataset], Dataset]:
-    """Get and pre-process NQ dataset. This assumes data was previously prepared and context embeddings
+    """Get and pre-process training dataset. This assumes data was previously prepared and context embeddings
     are available in the dataset.
 
     Args:
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
-        do_repetition_augmentations (bool): Whether to perform repetition augmentations.
+        data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
 
     Returns:
         Union[List[Dataset], Dataset]: Processed datasets.
     """
 
-    nq_data = datasets.load_from_disk(data_dir)
+    try:
+        data = datasets.load_from_disk(data_dir)
+    except FileNotFoundError:
+        data = datasets.load_dataset(data_dir, cache_dir=data_cache_dir)
 
-    nq_training_data = nq_data["train"]
-    nq_validation_data = nq_data["val"]
+    training_data = data["train"]
+    validation_data = data["val"]
 
     tokenizer = get_tokenizer(
         tokenizer_path,
     )
 
     training_dataset = DatasetWithContextEmbedding(
-        nq_training_data,
+        training_data,
         context_length=context_length,
         tokenizer=tokenizer,
-        perform_augmentations=do_repetition_augmentations,
         include_context_ids=include_context_ids,
     )
     validation_dataset = DatasetWithContextEmbedding(
-        nq_validation_data,
+        validation_data,
         context_length=context_length,
         tokenizer=tokenizer,
-        perform_augmentations=False,
         include_context_ids=False,
     )
 

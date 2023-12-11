@@ -1,3 +1,4 @@
+import torch
 from argparse import ArgumentParser
 from transformers import Trainer, PreTrainedTokenizerFast, PreTrainedModel
 from datasets import Dataset
@@ -19,6 +20,20 @@ class CustomTrainer(Trainer):
             labels = inputs.pop("labels")
         else:
             labels = None
+
+        # We first embed the context using the 'transformer' attribute of model,
+        # which is the original decoder without the cross-attn layers.
+        context_input_ids = inputs.pop("context_input_ids")
+        with torch.no_grad():  # We don't need grads and need eval mode for embedding.
+            try:
+                encoder = model.module.transformer.eval()
+            except AttributeError:
+                encoder = model.transformer.eval()
+            encoder_hidden_states = encoder(
+                input_ids=context_input_ids,
+                attention_mask=inputs["encoder_attention_mask"],
+            ).last_hidden_state.detach()
+        inputs.update({"encoder_hidden_states": encoder_hidden_states})
 
         outputs = model(**inputs)
         # Save past state if it exists
