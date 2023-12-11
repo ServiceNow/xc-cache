@@ -7,18 +7,16 @@ from dssk.utils.hf_datasets import update_infodict
 def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
     question_text = d["question_text"]
     context_texts = d["context_texts"]
-    context_headers = d["contexts_headers"]
     answer_text = d.get("answer_text", None)
     if answered_example:
         assert answer_text  # Both None and "" are illegal.
     else:
         answer_text = ""
-    return question_text, context_texts, context_headers, answer_text
-
+    return question_text, context_texts, answer_text
 
 def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens"""
-    question_text, context_texts, _, answer_text = get_sample_info(d, answered_example)
+    question_text, context_texts, answer_text = get_sample_info(d, answered_example)
 
     # NOTE: The space before and after the \n are "weird", but this is how the model is trained
     #       as of October. In any case, we may change this for "proper" special tokens.
@@ -28,11 +26,18 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
 
     return {"self_input_text": self_input_text, "cross_input_texts": cross_input_texts}
 
+def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+    question_text, context_texts, answer_text = get_sample_info(d, answered_example)
+
+    self_input_text = f"<|user|>\n|<Q>|{question_text}\n<|assistant|>\n{answer_text}"
+    cross_input_texts = [[f"<|user|>\n|<C>|\n<|assistant|>\n{context_text}"] for context_text in context_texts]
+    return {"self_input_text": self_input_text, "cross_input_texts": cross_input_texts}
 
 def system_user_assistant_prompt_format(
     d: dict[str, Any], answered_example: bool
 ) -> dict[str, Any]:
-    question_text, context_texts, _, answer_text = get_sample_info(d, answered_example)
+    question_text, context_texts, answer_text = get_sample_info(d, answered_example)
 
     # TODO: Revisit this formatting choice (only one context was tested, and not extensively).
     combined_context = "; ".join(context_text for context_text in context_texts)
@@ -42,27 +47,10 @@ def system_user_assistant_prompt_format(
         self_input_text = f"{self_input_text}{answer_text}<|end|>"
     return {"self_input_text": self_input_text, "cross_input_texts": []}
 
-
-def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    question_text, context_texts, context_headers, _ = get_sample_info(d, answered_example)
-
-    if len(context_texts) < 1:
-        passages = [f"question: {question_text}"]
-
-    passages = [
-        f"question: {question_text} title: {title[0]} context: {text}"
-        for text, title in zip(context_texts, context_headers)
-    ]
-
-    return {"self_input_text": passages, "cross_input_texts": []}
-
-
 KNOWN_QA_TASK_FORMATS = {
     "cross": cross_colon_format,
     "prompt": system_user_assistant_prompt_format,
-    "fid": fid_format,
 }
-
 
 def format_qa_task(
     qa_task: Dataset,
