@@ -127,7 +127,7 @@ class DatasetWithContextEmbedding(Dataset):
             context_str,
             max_length=self.context_length,
             truncation=True,
-            )["input_ids"]
+        )["input_ids"]
 
         return {
             "input_ids": input_ids,
@@ -177,7 +177,7 @@ class Collator:
             return_tensors="pt",
         )
 
-        context_input_ids_list = [el["context_input_ids"] for el in batch]  
+        context_input_ids_list = [el["context_input_ids"] for el in batch]
 
         tokenized_context_ids = self.tokenizer.pad(
             {"input_ids": context_input_ids_list},
@@ -187,9 +187,11 @@ class Collator:
         )
 
         processed_batch.update(
-            {"context_input_ids": tokenized_context_ids["input_ids"], 
-                "encoder_attention_mask": tokenized_context_ids["attention_mask"],}
-                )
+            {
+                "context_input_ids": tokenized_context_ids["input_ids"],
+                "encoder_attention_mask": tokenized_context_ids["attention_mask"],
+            }
+        )
 
         # We repeat what is done in hugging face and labels are a simple clone of input ids
         # and shifiting happens inside the model's Forward during loss computation.
