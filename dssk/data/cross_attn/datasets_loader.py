@@ -112,7 +112,7 @@ class DatasetWithContextEmbedding(Dataset):
             # This branch runs if self.include_context_ids is not set
             # Or if self.include_context_ids is set but we are in an index for
             # the first iteration over the data.
-            use_context = True
+            use_context = False
             do_fim_transform = False  # No FIM for Q&A inputs.
             example_idx = i
         
@@ -128,7 +128,7 @@ class DatasetWithContextEmbedding(Dataset):
         if use_context:
             input_str = formatted_example["cross_input_texts"][0][0]
         else:
-            input_str = formatted_example["self_input_texts"]
+            input_str = formatted_example["self_input_text"]
 
         input_ids = self.tokenizer(
             input_str,
@@ -210,7 +210,7 @@ class Collator:
 
         processed_batch.update(
             {"context_input_ids": tokenized_context_ids["input_ids"], 
-                "encoder_attention_mask": tokenized_context_ids["attention_mask"],}
+                "encoder_attention_mask": tokenized_context_ids["attention_mask"].float(),} # Dropout will err if we use types of type Long
                 )
 
         # We repeat what is done in hugging face and labels are a simple clone of input ids
