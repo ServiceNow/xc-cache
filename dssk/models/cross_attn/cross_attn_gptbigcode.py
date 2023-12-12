@@ -381,11 +381,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
 
         assert n_layers > 0
         assert n_layers <= self.n_decoder_layers
-        # BUG: starcoderbase-3b has 36 layers, but exp_config.py has
-        #      num_cross_attn_layers=6 and cross_attn_layers_stride=6
-        #      for crossattn_starcoderbase-3b
-        # TODO: Joao, check if the -1 is required below or if config is wrong.
-        assert self.n_decoder_layers - layer_stride * n_layers - 1 >= 0
+        assert self.n_decoder_layers - layer_stride * n_layers >= 0
 
         cross_attn_layer_list = [torch.nn.Identity() for _ in range(self.n_decoder_layers)]
         if shared_weights:
