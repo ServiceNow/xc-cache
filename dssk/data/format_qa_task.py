@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from datasets import Dataset
 
 from dssk.utils.hf_datasets import update_infodict
@@ -65,7 +65,11 @@ KNOWN_QA_TASK_FORMATS = {
 
 
 def format_qa_task(
-    qa_task: Dataset, *, task_format: str, answered_example: bool = False, **kwargs
+    qa_task: Dataset,
+    *,
+    task_format: Optional[str] = None,
+    answered_example: bool = False,
+    **kwargs,
 ) -> Dataset:
     """Format a question answering task with a specific model in mind
 
@@ -73,6 +77,12 @@ def format_qa_task(
 
     When `answered_example` is `True`, the answer is included as part of self_input_text.
     This is typically used in training, or to generate solved examples for few-shot inference.
+
+    The new approach is to just "hope" that the formatter has the right features/columns to do what
+    it has to do, and that it returns the right features/columns for the model to do the same. The
+    old contract is provided below for reference.
+
+    *** OLD CONTRACT FOLLOWS ***
 
     The following fields are *added*:
 
@@ -94,15 +104,13 @@ def format_qa_task(
     in the input, and they are not in the output.
     If `answer_text` is present in the input, it must remain present in the output. If `answered_example` is `True`, then `answer_text` is mandatory in the input.
     """
-    # Add the two input fields
-    tmp = qa_task.map(
-        KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
-    )
-    # Remove the consumed fields
-    tmp = tmp.remove_columns(["question_text", "context_texts", "contexts_headers"])
+    if task_format:
+        qa_task = qa_task.map(
+            KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
+        )
 
     update_infodict(
-        tmp,
+        qa_task,
         {
             "format": {
                 "task_format": task_format,
@@ -110,4 +118,4 @@ def format_qa_task(
             }
         },
     )
-    return tmp
+    return qa_task
