@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from datasets import Dataset, load_from_disk
 
@@ -52,6 +52,7 @@ class AbstractLMInterface(ABC):
         dataset: Dataset,
         named_cache_path: Optional[str] = None,
         desc: Optional[str] = None,
+        post_process: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
     ) -> Dataset:
         """Call the model on each sample of a dataset, and return results as an augmented dataset.
 
@@ -77,6 +78,9 @@ class AbstractLMInterface(ABC):
         )
         # Add model information dictionary
         update_infodict(out, {"model": self.model_info})
+        # Post processing
+        if post_process:
+            out = post_process(out)
         # Save and/or return output.
         if named_cache_path is not None:
             out.save_to_disk(named_cache_path)
