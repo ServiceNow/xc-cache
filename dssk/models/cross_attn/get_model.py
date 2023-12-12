@@ -5,6 +5,26 @@ from dssk.models.cross_attn.cross_attn_gptbigcode import CrossAttnGPTBigCode
 from dssk.models.cross_attn.cross_attn_llama import CrossAttnLlama
 
 
+# Associate model types with substrings that hint that this type may apply.
+KNOWN_MODEL_TYPE = {"llama": {"llama"}, "gptbigcode": {"code"}}
+
+
+def infer_model_type(model_path: str) -> str:
+    model_path = model_path.lower()
+    candidates = set()
+    for model_type, substrings in KNOWN_MODEL_TYPE.items():
+        for substring in substrings:
+            if substring in model_path:
+                candidates.add(model_type)
+                continue
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    if not candidates:
+        raise ValueError("Cannot infer model_type: no candidate found.")
+    else:
+        raise ValueError("Cannot infer model_path: too many candidates (ambiguous).")
+
+
 def get_model(
     model_path: str,
     bos_token_id: int,
@@ -21,7 +41,7 @@ def get_model(
     cross_attn_hidden_size: Optional[int] = None,
     cross_attn_num_attention_heads: Optional[int] = None,
     randomly_initialize_decoder: Optional[bool] = False,
-    model_type: Optional[str] = "llama",
+    model_type: Optional[str] = None,
     cross_attn_num_key_value_heads: Optional[int] = None,
     cross_attn_attention_bias: Optional[bool] = False,
 ) -> PreTrainedModel:
@@ -45,22 +65,16 @@ def get_model(
         cross_attn_hidden_size (Optional[int]): If None (default), will use the base decoder's hidden size.
         cross_attn_num_attention_heads (Optional[int]): If None (default), will use the base decoder's number of attn heads.
         randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decoder. Defaults to False.
-        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gptbigcode"}.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode"}.
         cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
         cross_attn_attention_bias (Optional[bool]): = Only used for Llama variations. Whether to train bias parameters.
 
     Returns:
         PreTrainedModel: Pre-trained model.
     """
-
-    cross_attn_layers_stride: int = (2,)
-    cross_attn_shared_weights: bool = (True,)
-    cross_attn_dropout_prob: Optional[float] = (0.0,)
-    cross_attn_final_layer: Optional[bool] = (False,)
-    cross_attn_shared_projections: Optional[bool] = (False,)
-    cross_attn_hidden_size: Optional[int] = (None,)
-    cross_attn_num_attention_heads: Optional[int] = (None,)
-
+    if model_type is None:
+        model_type = infer_model_type(model_path)
+    model_type = model_type.lower().replace("_", "").replace("-", "")
     if n_cross_attn_layers > 0:
         if model_type == "llama":
             model = CrossAttnLlama(
@@ -92,7 +106,7 @@ def get_model(
             )
         else:
             raise ValueError(
-                "We currently support the following model types: llama, and gptbigcode"
+                f"Got model_type {model_type}, but only support {', '.join(KNOWN_MODEL_TYPE.keys())}"
             )
 
         if device is not None:
