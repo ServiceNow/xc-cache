@@ -63,8 +63,8 @@ def get_qa_task(
     dataset_name: str,
     dataset_split: Optional[str],
     cache_path: str,
-    context: Optional[str] = None,
-    answer: Optional[str] = None,
+    task_context: Optional[str] = None,
+    task_answer: Optional[str] = None,
     subset_size: Optional[int] = None,
     **kwargs,  # Discarded
 ) -> Dataset:
@@ -74,10 +74,9 @@ def get_qa_task(
     This is about *what* is potentially available to the model, not *how* it is presented.
     Further processing is thus required to transform a "task" into a "model_input".
 
-    If provided, the `context` and/or `answer` arguments specify the processing to be done
-    to the corresponding parts of the task. Such processing usually requires/provides specific
-    features/columns: the new approach is to just see if the processing passes, and to leave
-    all columns there. The old contract is provided below for reference.
+    If provided, the `task_context` and/or `task_answer` arguments specify the processing
+    to be done to the corresponding parts of the task. Such processing usually requires/provides specific features/columns: the new approach is to just see if the processing
+    passes, and to leave all columns there. The old contract is provided below for reference.
 
     If provided, the `subset_size` argument specifies the number of samples to keep as a
     subset of the dataset. This is used for debug and/or test purpose.
@@ -108,18 +107,18 @@ def get_qa_task(
         assert subset_size > 0
         tmp = tmp.select(range(subset_size))
     with no_cache():
-        if answer:
-            tmp = tmp.map(KNOWN_ANSWER_OPTIONS[answer])
-        if context:
-            tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[context])
+        if task_answer:
+            tmp = tmp.map(KNOWN_ANSWER_OPTIONS[task_answer])
+        if task_context:
+            tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[task_context])
         update_infodict(
             tmp,
             {
                 "task": {
                     "dataset_name": dataset_name,
                     "dataset_split": dataset_split,
-                    "context": context,
-                    "answer": answer,
+                    "context": task_context,
+                    "answer": task_answer,
                     "subset_size": subset_size,
                 }
             },

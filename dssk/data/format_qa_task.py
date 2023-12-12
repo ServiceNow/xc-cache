@@ -119,3 +119,65 @@ def format_qa_task(
         },
     )
     return qa_task
+
+
+def map_september_format_to_december_format(d: dict[str, Any]) -> dict[str, Any]:
+    assert len(d["context_texts"]) == 1
+    return {
+        "sample_idx": f"{d['question_id']}-{d['annotation_id']}",
+        "titles_list": [d["document_title"]],
+        "question": d["question_text"],
+        "answer": d["answer_text"],
+        "answer_pred": d["output_text"],
+        "contexts_list": d["context_texts"][0],
+        "useful_contexts": [1],
+        "dataset": "UNKNOWN",
+    }
+
+
+KNOWN_POST_CLEANUPS = {
+    "sept2dec": (
+        map_september_format_to_december_format,
+        {
+            "output_text",
+            "question_index",
+            "question_text",
+            "annotation_index_list",
+            "long_answer_clean",
+            "cross_input_texts",
+            "yes_no_answer",
+            "answer_text",
+            "annotation_index",
+            "long_nq_tier",
+            "document_title",
+            "short_answers_text",
+            "question_id",
+            "contexts_headers",
+            "context_texts",
+            "annotation_id_list",
+            "annotation_id",
+            "self_input_text",
+            "headers_before_long_answer",
+        },
+    )
+}
+
+
+class CleanupQATask:
+    def __init__(self, *, post_cleanup: Optional[str] = None, **kwargs):
+        self.post_cleanup = post_cleanup
+
+    def __call__(self, qa_task: Dataset) -> Dataset:
+        if self.post_cleanup:
+            formatter, dropped = KNOWN_POST_CLEANUPS[self.post_cleanup]
+            qa_task = qa_task.map(formatter, remove_columns=dropped)
+
+        update_infodict(
+            qa_task,
+            {
+                "cleanup": {
+                    "post_cleanup": self.post_cleanup,
+                }
+            },
+        )
+        return qa_task

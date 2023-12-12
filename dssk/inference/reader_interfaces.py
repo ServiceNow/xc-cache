@@ -47,6 +47,7 @@ class CrossAttnInterface(AbstractLMInterface):
             _ = HfDeepSpeedConfig(ds_config)
 
         # Model loading
+        self.model_ckpt = model_ckpt
         if model_ckpt:
             assert not model_path
             model, self.tokenizer = load_checkpoint(model_ckpt)
@@ -79,6 +80,7 @@ class CrossAttnInterface(AbstractLMInterface):
         return {
             "class_name": self.model.__class__.__name__,
             "name_or_path": self.model.name_or_path,
+            "model_ckpt": self.model_ckpt,
             "default_gen_args": self.default_gen_args,
         }
 
