@@ -115,7 +115,8 @@ if __name__ == "__main__":
     init_distributed_mode(opt)
 
     checkpoint_path = Path(opt.checkpoint_dir) / opt.name
-    checkpoint_exists = checkpoint_path.exists()
+    latest_path = (checkpoint_path / "checkpoint" / "latest").readlink()
+
     if opt.is_distributed:
         torch.distributed.barrier()
     checkpoint_path.mkdir(parents=True, exist_ok=True)
@@ -137,25 +138,23 @@ if __name__ == "__main__":
     eval_dataset = load_dataset(
         f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="val"
     )
-
-    if not checkpoint_exists and opt.model_path == "none":
+    if opt.model_path != "none":  # either load specific checkpoint
+        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
+            FiDT5, opt.model_path, opt, logger, reset_params=True
+        )
+        logger.info(f"Model loaded from {opt.model_path}")
+    elif latest_path.exists():  # or load latest checkpoint if found
+        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
+            FiDT5, latest_path, opt, logger, reset_params=False
+        )
+        logger.info(f"Model loaded from {latest_path}")
+    else:  # or instantiate new model
         t5 = transformers.T5ForConditionalGeneration.from_pretrained(model_name)
         model = FiDT5(t5.config)
         model.load_t5(t5.state_dict())
         model = model.to(opt.local_rank)
         optimizer, scheduler = set_optim(opt, model)
         step, best_dev_em = 0, 0.0
-    elif opt.model_path == "none":
-        load_path = checkpoint_path / "checkpoint" / "latest"
-        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, load_path, opt, logger, reset_params=False
-        )
-        logger.info(f"Model loaded from {load_path}")
-    else:
-        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, opt.model_path, opt, logger, reset_params=True
-        )
-        logger.info(f"Model loaded from {opt.model_path}")
 
     model.set_checkpoint(opt.use_checkpoint)
 

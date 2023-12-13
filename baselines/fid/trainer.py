@@ -108,7 +108,7 @@ def train(
                     pbar.set_description(f"Loss: {curr_loss / (opt.eval_freq)}, val EM: {dev_em}")
                     curr_loss = 0.0
 
-            if opt.is_main and step % opt.save_freq == 0:
+            if opt.is_main and (step % opt.save_freq == 0 or step == opt.total_steps):
                 save(
                     model,
                     optimizer,
@@ -124,9 +124,14 @@ def train(
 
 
 def evaluate(model, dataset, tokenizer, collator, opt):
-    # evaluate on 100 random samples
-    subset = Subset(dataset, np.random.choice(len(dataset), 100, replace=False).tolist())
-    sampler = SequentialSampler(subset)
+    if opt.eval_subset > 0:
+        # evaluate on subset of random samples
+        subset = Subset(
+            dataset, np.random.choice(len(dataset), opt.eval_subset, replace=False).tolist()
+        )
+        sampler = SequentialSampler(subset)
+    else:
+        sampler = SequentialSampler(dataset)
 
     dataloader = DataLoader(
         subset,
