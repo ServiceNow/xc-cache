@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from datasets import Dataset, load_from_disk
+
+from dssk.utils.hf_datasets import update_infodict
 
 
 class AbstractLMInterface(ABC):
@@ -16,6 +18,17 @@ class AbstractLMInterface(ABC):
         """
         Return the early-stopping token which can be added to the end of the output.
         """
+
+    @property
+    def model_info(self) -> dict[str, Any]:
+        """Information about this model, how it was train, etc.
+
+        Anything that could affect performances and/or be relevant in evaluation may appear here.
+
+        This default implementation should be overridden.
+        TODO: Implement this method in all our interfaces, then consider making this an @abstractmethod.
+        """
+        return {"ModelInfoNotImplementedInInterface": "You should implement it :)"}
 
     @abstractmethod
     def __call__(self, sample: dict[str, Any], **gen_args) -> dict[str, Any]:
@@ -39,6 +52,7 @@ class AbstractLMInterface(ABC):
         dataset: Dataset,
         named_cache_path: Optional[str] = None,
         desc: Optional[str] = None,
+        post_process: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
     ) -> Dataset:
         """Call the model on each sample of a dataset, and return results as an augmented dataset.
 
@@ -62,6 +76,11 @@ class AbstractLMInterface(ABC):
             new_fingerprint="version_1",
             desc=desc,
         )
+        # Add model information dictionary
+        update_infodict(out, {"model": self.model_info})
+        # Post processing
+        if post_process:
+            out = post_process(out)
         # Save and/or return output.
         if named_cache_path is not None:
             out.save_to_disk(named_cache_path)
