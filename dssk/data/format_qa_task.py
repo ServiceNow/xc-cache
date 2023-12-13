@@ -5,6 +5,9 @@ from dssk.utils.hf_datasets import update_infodict
 
 
 def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
+    """Get sample information for the "old contract" (aka "september format")
+    This is deprecated.
+    """
     question_text = d["question_text"]
     context_texts = d["context_texts"]
     context_headers = d["contexts_headers"]
@@ -17,12 +20,11 @@ def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str
 
 
 def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    """For cross-attention models using 'question: ' etc. as Ersatz for special tokens"""
+    """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
+    This is deprecated.
+    """
     question_text, context_texts, _, answer_text = get_sample_info(d, answered_example)
 
-    # NOTE: The space before and after the \n are "weird", but this is how the model is trained
-    #       as of October. In any case, we may change this for "proper" special tokens.
-    # TODO: Revisit.
     self_input_text = f"question: {question_text} \n answer: {answer_text}"
     cross_input_texts = [[f"context: {context_text}"] for context_text in context_texts]
 
@@ -31,13 +33,15 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
 
 def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
-    question_text, context_texts, answer_text = get_sample_info(d, answered_example)
-
-    self_input_text = f"<|user|>\n|<Q>|{question_text}\n<|assistant|>\n{answer_text}"
-    cross_input_texts = [
-        [f"<|user|>\n|<C>|\n<|assistant|>\n{context_text}"] for context_text in context_texts
-    ]
-    return {"self_input_text": self_input_text, "cross_input_texts": cross_input_texts}
+    answer = d.get("answer", None)
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+    return {
+        "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
+        "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{d['context']}",
+    }
 
 
 def system_user_assistant_prompt_format(

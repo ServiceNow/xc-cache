@@ -10,18 +10,6 @@ from dssk.models.get_tokenizer import get_tokenizer
 from dssk.data.format_qa_task import cross_user_assistant_format
 
 
-def prepare_example_for_formatter(context: str, question: str, answer: str) -> Dict[str, str]:
-    """Prepares the data as required by formatters."""
-
-    return {
-        "question_text": question,
-        "context_texts": [
-            context,
-        ],
-        "answer_text": answer,
-    }
-
-
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
 def apply_fim_transform(
     input_tokens: List[int],
@@ -126,19 +114,15 @@ class DatasetWithContextEmbedding(Dataset):
             do_fim_transform = False  # No FIM for Q&A inputs.
             example_idx = i
 
-        context_str = self.train_dataset[example_idx]["context"]
-        question_str = self.train_dataset[example_idx]["question"]
-        answer_str = self.train_dataset[example_idx]["answer"]
-
         formatted_example = cross_user_assistant_format(
-            prepare_example_for_formatter(context_str, question_str, answer_str),
+            self.train_dataset[example_idx],
             answered_example=True,
         )
 
         if use_context:
-            input_str = formatted_example["cross_input_texts"][0][0]
+            input_str = formatted_example["cross_input_str"]
         else:
-            input_str = formatted_example["self_input_text"]
+            input_str = formatted_example["self_input_str"]
 
         input_ids = self.tokenizer(
             input_str,
@@ -155,7 +139,7 @@ class DatasetWithContextEmbedding(Dataset):
             )
 
         # Context ids are used for embedding during training.
-        context_str = formatted_example["cross_input_texts"][0][0]
+        context_str = formatted_example["cross_input_str"]
         context_input_ids = self.tokenizer(
             context_str,
             max_length=self.context_length,
