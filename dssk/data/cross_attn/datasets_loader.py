@@ -7,15 +7,24 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
+from dssk.data.format_qa_task import cross_user_assistant_format
 
 
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
 def apply_fim_transform(
-    input_tokens: List[int], suffix_token_id: int, prefix_token_id: int, middle_token_id: int
+    input_tokens: List[int],
+    suffix_token_id: int,
+    prefix_token_id: int,
+    middle_token_id: int,
+    skip_start_n_tokens: int = 4,
 ) -> List[int]:
+    assert len(input_tokens) > skip_start_n_tokens
+
     input_tokens = np.array(input_tokens)
 
-    boundaries = list(np.random.randint(low=1, high=input_tokens.shape[0] - 2, size=2))
+    boundaries = list(
+        np.random.randint(low=skip_start_n_tokens, high=input_tokens.shape[0] - 2, size=2)
+    )
     boundaries.sort()
 
     prefix = input_tokens[: boundaries[0]]
@@ -94,18 +103,26 @@ class DatasetWithContextEmbedding(Dataset):
 
         if i >= len(self.train_dataset):
             # This branch only runs if self.include_context_ids is set.
-            example = self.train_dataset[i - len(self.train_dataset)]
+            example_idx = i - len(self.train_dataset)
+            use_context = True
             do_fim_transform = random.choice([True, False])
-            input_str = f"|<C>|\n{example['context']}"
         else:
             # This branch runs if self.include_context_ids is not set
             # Or if self.include_context_ids is set but we are in an index for
             # the first iteration over the data.
+            use_context = False
             do_fim_transform = False  # No FIM for Q&A inputs.
-            example = self.train_dataset[i]
-            question_str = example["question"]
-            answer_str = example["answer"]
-            input_str = f"|<Q>|\n{question_str}\n|<A>|\n{answer_str}"
+            example_idx = i
+
+        formatted_example = cross_user_assistant_format(
+            self.train_dataset[example_idx],
+            answered_example=True,
+        )
+
+        if use_context:
+            input_str = formatted_example["cross_input_str"]
+        else:
+            input_str = formatted_example["self_input_str"]
 
         input_ids = self.tokenizer(
             input_str,
@@ -122,7 +139,7 @@ class DatasetWithContextEmbedding(Dataset):
             )
 
         # Context ids are used for embedding during training.
-        context_str = f"|<C>|\n{example['context']}"
+        context_str = formatted_example["cross_input_str"]
         context_input_ids = self.tokenizer(
             context_str,
             max_length=self.context_length,
@@ -189,8 +206,8 @@ class Collator:
         processed_batch.update(
             {
                 "context_input_ids": tokenized_context_ids["input_ids"],
-                "encoder_attention_mask": tokenized_context_ids["attention_mask"],
-            }
+                "encoder_attention_mask": tokenized_context_ids["attention_mask"].float(),
+            }  # Dropout will err if we use types of type Long
         )
 
         # We repeat what is done in hugging face and labels are a simple clone of input ids
