@@ -2,12 +2,7 @@ from typing import Optional, Any
 
 from datasets import load_dataset, Dataset
 
-from dssk.utils.hf_datasets import no_cache
-
-
-QUESTION_ID_COLUMNS = {"question_id", "question_index"}
-LONG_NQ_DEDUP_ID_COLUMNS = {"long_nq_tier", "annotation_id_list", "annotation_index_list"}
-TASK_COLUMNS = {"question_text", "context_texts", "contexts_headers", "answer_text"}
+from dssk.utils.hf_datasets import no_cache, update_infodict
 
 
 def empty_context_columns(d: dict[str, Any]) -> dict[str, Any]:
@@ -68,8 +63,8 @@ def get_qa_task(
     dataset_name: str,
     dataset_split: Optional[str],
     cache_path: str,
-    context: str = "only_gold_long",
-    answer: str = "newline",
+    task_context: Optional[str] = None,
+    task_answer: Optional[str] = None,
     subset_size: Optional[int] = None,
     **kwargs,  # Discarded
 ) -> Dataset:
@@ -78,6 +73,16 @@ def get_qa_task(
     What constitute a "task" *excludes* any knowledge about the model that will consume it.
     This is about *what* is potentially available to the model, not *how* it is presented.
     Further processing is thus required to transform a "task" into a "model_input".
+
+    If provided, the `task_context` and/or `task_answer` arguments specify the processing
+    to be done to the corresponding parts of the task. Such processing usually requires/provides specific features/columns: the new approach is to just see if the processing
+    passes, and to leave all columns there. The old contract is provided below for reference.
+
+    If provided, the `subset_size` argument specifies the number of samples to keep as a
+    subset of the dataset. This is used for debug and/or test purpose.
+
+
+    *** OLD CONTRACT BELOW ***
 
     For question answering, the following fields must be present. Extra fields can be provided
     (e.g., ids for identifying samples' source), but let's try to keep their number in check.
@@ -96,22 +101,26 @@ def get_qa_task(
     - answer_text: str
         A (usually short) answer.
         TODO: Some evaluation scheme may benefit from something more structured. We should think about it.
-
-    - subset_size: Optional[int]
-        The number of samples to keep as a subset of the dataset.
-        For debug and/or test purpose.
     """
-    # This implementation is "fake", not general at all. But it works for our evaluation purpose.
-    # TODO: Come to an agreement about the interface so that we can use this "task" concept for both training/evaluation purpose.
-    assert dataset_name == "long_nq_dedup"
-    raw = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
+    tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
     if subset_size is not None:
         assert subset_size > 0
-        raw = raw.select(range(subset_size))
+        tmp = tmp.select(range(subset_size))
     with no_cache():
-        tmp = raw.map(KNOWN_ANSWER_OPTIONS[answer])
-        tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[context])
-        tmp = tmp.select_columns(
-            list(QUESTION_ID_COLUMNS | LONG_NQ_DEDUP_ID_COLUMNS | TASK_COLUMNS)
+        if task_answer:
+            tmp = tmp.map(KNOWN_ANSWER_OPTIONS[task_answer])
+        if task_context:
+            tmp = tmp.map(KNOWN_CONTEXT_OPTIONS[task_context])
+        update_infodict(
+            tmp,
+            {
+                "task": {
+                    "dataset_name": dataset_name,
+                    "dataset_split": dataset_split,
+                    "context": task_context,
+                    "answer": task_answer,
+                    "subset_size": subset_size,
+                }
+            },
         )
         return tmp
