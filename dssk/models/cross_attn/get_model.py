@@ -3,26 +3,7 @@ import torch
 from transformers import AutoModelForCausalLM, PreTrainedModel
 from dssk.models.cross_attn.cross_attn_gptbigcode import CrossAttnGPTBigCode
 from dssk.models.cross_attn.cross_attn_llama import CrossAttnLlama
-
-
-# Associate model types with substrings that hint that this type may apply.
-KNOWN_MODEL_TYPE = {"llama": {"llama"}, "gptbigcode": {"code"}}
-
-
-def infer_model_type(model_path: str) -> str:
-    model_path = model_path.lower()
-    candidates = set()
-    for model_type, substrings in KNOWN_MODEL_TYPE.items():
-        for substring in substrings:
-            if substring in model_path:
-                candidates.add(model_type)
-                continue
-    if len(candidates) == 1:
-        return next(iter(candidates))
-    if not candidates:
-        raise ValueError("Cannot infer model_type: no candidate found.")
-    else:
-        raise ValueError("Cannot infer model_path: too many candidates (ambiguous).")
+from dssk.models import infer_model_type
 
 
 def get_model(
@@ -105,9 +86,7 @@ def get_model(
                 randomly_initialize_decoder=randomly_initialize_decoder,
             )
         else:
-            raise ValueError(
-                f"Got model_type {model_type}, but only support {', '.join(KNOWN_MODEL_TYPE.keys())}"
-            )
+            raise ValueError(f"Got unsupported model_type {model_type}.")
 
         if device is not None:
             model = model.to(device)
