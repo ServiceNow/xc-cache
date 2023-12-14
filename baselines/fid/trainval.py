@@ -115,7 +115,6 @@ if __name__ == "__main__":
     init_distributed_mode(opt)
 
     checkpoint_path = Path(opt.checkpoint_dir) / opt.name
-    latest_path = (checkpoint_path / "checkpoint" / "latest").readlink()
 
     if opt.is_distributed:
         torch.distributed.barrier()
@@ -129,7 +128,10 @@ if __name__ == "__main__":
     tokenizer = transformers.T5Tokenizer.from_pretrained(
         model_name, model_max_length=opt.text_maxlength
     )
-    collator = Collator(opt.text_maxlength, tokenizer, answer_maxlength=opt.answer_maxlength)
+    # maximal number of tokens for T5 is 512
+    collator = Collator(
+        min(opt.text_maxlength, 512), tokenizer, answer_maxlength=opt.answer_maxlength
+    )
 
     # use global rank and world size to split the eval set on multiple gpus
     train_dataset = load_dataset(
@@ -143,9 +145,13 @@ if __name__ == "__main__":
             FiDT5, opt.model_path, opt, logger, reset_params=True
         )
         logger.info(f"Model loaded from {opt.model_path}")
-    elif latest_path.exists():  # or load latest checkpoint if found
+    elif (
+        len(list(checkpoint_path.glob("checkpoint/step*"))) > 0
+    ):  # or load latest checkpoint if found
+        latest_path = checkpoint_path / "checkpoint" / "latest"
+
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, latest_path, opt, logger, reset_params=False
+            FiDT5, latest_path.readlink(), opt, logger, reset_params=False
         )
         logger.info(f"Model loaded from {latest_path}")
     else:  # or instantiate new model
