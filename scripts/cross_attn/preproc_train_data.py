@@ -65,7 +65,7 @@ def train_data_prep(
     return processed_data
 
 
-def main(argv=None):
+def main(explicit_arguments: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--training_data_id",
@@ -104,7 +104,7 @@ def main(argv=None):
         help="Optional id to push the processed data to hugging face datasets.",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(explicit_arguments)
 
     processed_dataset = train_data_prep(
         training_data_path=args.training_data_id,
