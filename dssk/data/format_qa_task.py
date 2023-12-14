@@ -59,17 +59,20 @@ def system_user_assistant_prompt_format(
 
 
 def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    question_text, context_texts, context_headers, _ = get_sample_info(d, answered_example)
+    if answered_example:
+        raise NotImplementedError(
+            "Answered examples (typically for training) are not implemented yet."
+        )
 
-    if len(context_texts) < 1:
-        passages = [f"question: {question_text}"]
+    if d["contexts_list"]:
+        passages = [
+            f"question: {d['question']} title: {title} context: {context}"
+            for context, title in zip(d["contexts_list"], d["titles_list"])
+        ]
+    else:
+        passages = [f"question: {d['question']}"]
 
-    passages = [
-        f"question: {question_text} title: {title[0]} context: {text}"
-        for text, title in zip(context_texts, context_headers)
-    ]
-
-    return {"self_input_text": passages, "cross_input_texts": []}
+    return {"passages": passages}
 
 
 KNOWN_QA_TASK_FORMATS = {
@@ -174,7 +177,11 @@ KNOWN_POST_CLEANUPS = {
             "self_input_text",
             "headers_before_long_answer",
         },
-    )
+    ),
+    "fid": (
+        None,
+        {"passages", "context"},
+    ),
 }
 
 
