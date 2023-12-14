@@ -1,5 +1,5 @@
 import argparse
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import datasets
 
 
@@ -64,7 +64,7 @@ def create_topiocqa_splits(cache_dir: str, num_proc: int = 1) -> datasets.Datase
     return datasets.DatasetDict(new_splits)
 
 
-def main(argv=None):
+def main(explicit_arguments: Optional[list[str]] = None) -> str:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--num_proc",
@@ -78,7 +78,7 @@ def main(argv=None):
         help="Path where to cache data.",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(explicit_arguments)
 
     hotpotqa_split = create_hotpotqa_splits(cache_dir=args.data_cache_path)
 
