@@ -8,11 +8,14 @@
 import numpy as np
 import torch
 
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Subset
+from torch.utils.data import DataLoader, SequentialSampler, Subset
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
-from baselines.fid.src.save_load_model import save
+from baselines.fid.src.datasets_loader import BatchSampler
 from baselines.fid.src.metrics import average_main, ems, weighted_average
+from baselines.fid.src.save_load_model import save
+
 from dssk.utils.scripting import set_random_seed
 
 
@@ -41,14 +44,15 @@ def train(
     set_random_seed(
         opt.global_rank + opt.seed
     )  # different seed for different sampling depending on global_rank
-    train_sampler = RandomSampler(train_dataset)
+
+    train_sampler = BatchSampler(train_dataset, opt.per_gpu_batch_size)
     train_dataloader = DataLoader(
         train_dataset,
         sampler=train_sampler,
         batch_size=opt.per_gpu_batch_size,
-        drop_last=True,
         num_workers=opt.n_workers,
         collate_fn=collator,
+        drop_last=False,
     )
 
     _, curr_loss = 0.0, 0.0
@@ -60,7 +64,7 @@ def train(
         pbar = tqdm(train_dataloader)
         for batch in pbar:
             step += 1
-            (idx, labels, _, context_ids, context_mask) = batch
+            (_, labels, _, context_ids, context_mask) = batch
 
             train_loss = model(
                 input_ids=context_ids.cuda(),
@@ -129,9 +133,13 @@ def evaluate(model, dataset, tokenizer, collator, opt):
         subset = Subset(
             dataset, np.random.choice(len(dataset), opt.eval_subset, replace=False).tolist()
         )
-        sampler = SequentialSampler(subset)
     else:
-        sampler = SequentialSampler(dataset)
+        subset = dataset
+
+    if torch.distributed.is_initialized():
+        sampler = DistributedSampler(subset, shuffle=False)
+    else:
+        sampler = SequentialSampler(subset)
 
     dataloader = DataLoader(
         subset,
