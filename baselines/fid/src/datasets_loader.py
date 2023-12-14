@@ -67,6 +67,7 @@ class BatchSampler(Sampler):
 def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
     passage_ids, passage_masks = [], []
     max_n_contexts = 0
+    max_n_tokens = 0
     for text_passages in batch_text_passages:
         p = tokenizer.batch_encode_plus(
             text_passages,
@@ -75,12 +76,14 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
             return_tensors="pt",
             truncation=text_maxlength is not None,
         )
-        passage_ids.append(p["input_ids"][None])
-        passage_masks.append(p["attention_mask"][None])
+        passage_ids.append(p["input_ids"])
+        passage_masks.append(p["attention_mask"])
         max_n_contexts = max(max_n_contexts, len(text_passages))
+        max_n_tokens = max(max_n_tokens, p["attention_mask"].shape[1])
 
-    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0).squeeze(1)
-    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0).squeeze(1)
+    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0)
+    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0)
+
     return passage_ids, passage_masks.bool()
 
 

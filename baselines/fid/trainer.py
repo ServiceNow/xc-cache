@@ -32,15 +32,8 @@ def train(
     best_dev_em,
     checkpoint_path,
     logger,
+    wandb_run,
 ):
-    # TODO: replace with wandb logging
-    # if opt.is_main:
-    #     try:
-    #         tb_logger = torch.utils.tensorboard.SummaryWriter(Path(opt.checkpoint_dir)/opt.name)
-    #     except:
-    #         tb_logger = None
-    #         logger.warning('Tensorboard is not available.')
-
     set_random_seed(
         opt.global_rank + opt.seed
     )  # different seed for different sampling depending on global_rank
@@ -50,7 +43,7 @@ def train(
         train_dataset,
         sampler=train_sampler,
         batch_size=opt.per_gpu_batch_size,
-        num_workers=opt.n_workers,
+        num_workers=0 if opt.debug else opt.n_workers,
         collate_fn=collator,
         drop_last=False,
     )
@@ -83,8 +76,10 @@ def train(
             train_loss = average_main(train_loss, opt)
             curr_loss += train_loss.item()
 
+            wandb_run.log({"train/loss": train_loss.item()})
+
             if step % opt.eval_freq == 0:
-                dev_em = evaluate(model, eval_dataset, tokenizer, collator, opt)
+                dev_em, val_loss = evaluate(model, eval_dataset, tokenizer, collator, opt)
                 model.train()
                 if opt.is_main:
                     if dev_em > best_dev_em:
@@ -105,10 +100,14 @@ def train(
                     log += f"lr: {scheduler.get_last_lr()[0]:.5f}"
                     logger.info(log)
 
-                    # TODO: log in wandb
-                    # if tb_logger is not None:
-                    #     tb_logger.add_scalar("Evaluation", dev_em, step)
-                    #     tb_logger.add_scalar("Training", curr_loss / (opt.eval_freq), step)
+                    wandb_run.log(
+                        {
+                            "lr": scheduler.get_last_lr()[0],
+                            "val/EM": 100 * dev_em,
+                            "val/loss": val_loss.item(),
+                        }
+                    )
+
                     pbar.set_description(f"Loss: {curr_loss / (opt.eval_freq)}, val EM: {dev_em}")
                     curr_loss = 0.0
 
@@ -146,20 +145,28 @@ def evaluate(model, dataset, tokenizer, collator, opt):
         sampler=sampler,
         batch_size=opt.per_gpu_batch_size,
         drop_last=False,
-        num_workers=opt.n_workers,
+        num_workers=0 if opt.debug else opt.n_workers,
         collate_fn=collator,
     )
     model.eval()
     total = 0
     exactmatch = []
     model = model.module if hasattr(model, "module") else model
+    total_loss = 0
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            (idx, _, _, context_ids, context_mask) = batch
+            (idx, labels, _, context_ids, context_mask) = batch
 
             outputs = model.generate(
                 input_ids=context_ids.cuda(), attention_mask=context_mask.cuda(), max_length=50
             )
+
+            val_loss = model(
+                input_ids=context_ids.cuda(),
+                attention_mask=context_mask.cuda(),
+                labels=labels.cuda(),
+            )[0]
+            total_loss += average_main(val_loss, opt)
 
             for k, o in enumerate(outputs):
                 ans = tokenizer.decode(o, skip_special_tokens=True)
@@ -169,4 +176,4 @@ def evaluate(model, dataset, tokenizer, collator, opt):
                 exactmatch.append(score)
 
     exactmatch, total = weighted_average(np.mean(exactmatch), total, opt)
-    return exactmatch
+    return exactmatch, total_loss / len(dataloader)

@@ -10,6 +10,7 @@ import sys
 import torch
 import transformers
 import os
+import wandb
 
 from pathlib import Path
 from datasets import load_dataset
@@ -53,7 +54,7 @@ def init_distributed_mode(params):
     has_local_rank = hasattr(params, "local_rank")
 
     # multi-GPU job (local or multi-node) - jobs started with torch.distributed.launch
-    if has_local_rank and params.local_rank != -1:
+    if not opt.debug and has_local_rank and params.local_rank != -1:
         assert params.main_port == -1
 
         # read environment variables
@@ -170,6 +171,13 @@ if __name__ == "__main__":
             find_unused_parameters=False,
         )
 
+    if opt.local_rank == 0:
+        wandb_run = wandb.init(
+            name=None,
+            project=opt.name,
+            mode="disabled" if opt.debug else None,  # no logging while debugging
+        )
+
     logger.info("Start training")
     train(
         model,
@@ -184,4 +192,5 @@ if __name__ == "__main__":
         best_dev_em,
         checkpoint_path,
         logger,
+        wandb_run,
     )
