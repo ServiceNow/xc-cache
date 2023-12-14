@@ -124,7 +124,6 @@ if __name__ == "__main__":
 
     model_name = "t5-" + opt.model_size
 
-    # load data
     tokenizer = transformers.T5Tokenizer.from_pretrained(
         model_name, model_max_length=opt.text_maxlength
     )
@@ -133,7 +132,6 @@ if __name__ == "__main__":
         min(opt.text_maxlength, 512), tokenizer, answer_maxlength=opt.answer_maxlength
     )
 
-    # use global rank and world size to split the eval set on multiple gpus
     train_dataset = load_dataset(
         f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="train"
     )

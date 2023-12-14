@@ -8,6 +8,61 @@
 import torch
 from random import shuffle
 
+from torch.utils.data import RandomSampler, Sampler
+
+
+class BatchSampler(Sampler):
+    def __init__(self, data_source, batch_size):
+        """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.
+
+        Args:
+            data_source (datasets.Dataset): aggregated dataset
+            batch_size (int): number of sampler per a batch
+        """
+
+        # hard-coded to avoid iterating through the whole dataset
+        self.dataset_names = ["msmarco", "nq", "topiocqa", "hotpotqa", "squad_v2"]
+
+        # a sampler per dataset, Filtering is slow but it's cached
+        self.samplers = [
+            RandomSampler(data_source.filter(lambda example: example["dataset"] == name))
+            for name in self.dataset_names
+        ]
+        self.batch_size = batch_size
+        self.data_source = data_source
+
+    def __iter__(self):
+        """Sequentially iterates over the samplers yielding a batch of data exclusively from one dataset
+
+        Yields:
+            dict: one sample at a time
+        """
+
+        # list of counters of sampled data by sampler to keep track of when they are exhausted
+        remaining = [len(sampler) for sampler in self.samplers]
+
+        # extra security: the dataloader that calls this batchsampler should stop after sampling self.__len__() data
+        while all([r >= self.batch_size for r in remaining]):
+            # sequentially sample from each dataset
+            for i, sampler in enumerate(self.samplers):
+                # skip sampler if it doe not have enough data for a full batch
+                if remaining[i] >= self.batch_size:
+                    # change sampler when a full batch has been sampled
+                    for _ in range(self.batch_size):
+                        remaining[i] -= 1
+                        yield next(sampler.__iter__())
+
+    def __len__(self):
+        """Accounts for data that is dropped by each sampler as it cannot form a full batch
+
+        Returns:
+            int: number of sampled data
+        """
+
+        return self.batch_size * sum(
+            [len(sampler) // self.batch_size for sampler in self.samplers]
+        )
+
 
 def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
     passage_ids, passage_masks = [], []
@@ -16,7 +71,7 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
         p = tokenizer.batch_encode_plus(
             text_passages,
             max_length=text_maxlength,
-            padding="max_length",
+            padding=True,
             return_tensors="pt",
             truncation=text_maxlength is not None,
         )
@@ -63,9 +118,9 @@ class Collator(object):
         target = self.tokenizer.batch_encode_plus(
             target,
             max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
-            padding="max_length",
+            padding=True,
             return_tensors="pt",
-            truncation=True if self.answer_maxlength > 0 else False,
+            truncation=self.answer_maxlength > 0,
         )
         target_ids = target["input_ids"]
         target_mask = target["attention_mask"].bool()
