@@ -64,7 +64,7 @@ def create_topiocqa_splits(cache_dir: str, num_proc: int = 1) -> datasets.Datase
     return datasets.DatasetDict(new_splits)
 
 
-def main(explicit_arguments: Optional[list[str]] = None) -> str:
+def main(explicit_arguments: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--num_proc",
