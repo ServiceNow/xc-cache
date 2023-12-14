@@ -201,6 +201,14 @@ class FiDInterface(AbstractLMInterface):
             if to_device is not None:
                 self.model.to(to_device)
 
+    @property
+    def model_info(self) -> dict[str, Any]:
+        # See docstring in AbstractLMInterface.model_info
+        return {
+            "class_name": self.model.__class__.__name__,
+            "name_or_path": self.model.name_or_path,
+        }
+
     def __call__(self, sample: dict[str, Any], **gen_args) -> dict[str, Any]:
         """
         Any extra keyword arguments will be sent to the model.
@@ -212,7 +220,7 @@ class FiDInterface(AbstractLMInterface):
         # Tokenize list of passages
         # batch, because we have multiple passages per sample
         features = self.tokenizer.batch_encode_plus(
-            sample["self_input_text"],
+            sample["passages"],
             padding="max_length",
             return_tensors="pt",
             truncation=True,
@@ -228,9 +236,9 @@ class FiDInterface(AbstractLMInterface):
         try:
             # A single answer should be returned
             assert len(output) == 1
-            output_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
+            answer_pred = self.tokenizer.decode(output[0], skip_special_tokens=True)
             return {
-                "output_text": output_text,
+                "answer_pred": answer_pred,
                 "error": False,
                 "error_msg": "",
             }
@@ -238,7 +246,7 @@ class FiDInterface(AbstractLMInterface):
         # to an unstable GPU state, which can cause more error further down the line.
         except RuntimeError as e:
             return {
-                "output_text": "",
+                "answer_pred": "",
                 "error": True,
                 "error_msg": str(e),
             }
