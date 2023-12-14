@@ -65,7 +65,7 @@ def train_data_prep(
     return processed_data
 
 
-def main(explicit_arguments: Optional[list[str]] = None) -> str:
+def main(explicit_arguments: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--training_data_id",
