@@ -151,6 +151,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
         project=opt.name,
         mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
     )
+    wandb_run.log(vars(opt))
 
     logger.info("Start training")
     train(
