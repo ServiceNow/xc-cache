@@ -35,7 +35,7 @@ def train(
     wandb_run,
 ):
     set_random_seed(
-        opt.global_rank + opt.seed
+        opt.local_rank + opt.seed
     )  # different seed for different sampling depending on global_rank
 
     train_sampler = BatchSampler(train_dataset, opt.per_gpu_batch_size)
@@ -82,18 +82,6 @@ def train(
                 dev_em, val_loss = evaluate(model, eval_dataset, tokenizer, collator, opt)
                 model.train()
                 if opt.is_main:
-                    if dev_em > best_dev_em:
-                        best_dev_em = dev_em
-                        save(
-                            model,
-                            optimizer,
-                            scheduler,
-                            step,
-                            best_dev_em,
-                            opt,
-                            checkpoint_path,
-                            "best_dev",
-                        )
                     log = f"{step} / {opt.total_steps} |"
                     log += f"train: {curr_loss/opt.eval_freq:.3f} |"
                     log += f"evaluation: {100*dev_em:.2f}EM |"
@@ -112,6 +100,12 @@ def train(
                     curr_loss = 0.0
 
             if opt.is_main and (step % opt.save_freq == 0 or step == opt.total_steps):
+                if dev_em > best_dev_em:
+                    best_dev_em = dev_em
+                    save_name = "best_dev"
+                else:
+                    save_name = f"step-{step}"
+
                 save(
                     model,
                     optimizer,
@@ -120,7 +114,7 @@ def train(
                     best_dev_em,
                     opt,
                     checkpoint_path,
-                    f"step-{step}",
+                    save_name,
                 )
             if step > opt.total_steps:
                 break
