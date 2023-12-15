@@ -9,17 +9,20 @@ import logging
 import sys
 import torch
 import transformers
-import os
 import wandb
 
-from pathlib import Path
 from datasets import load_dataset
+from pathlib import Path
+from typing import Optional
 
 from baselines.fid.src.datasets_loader import Collator
 from baselines.fid.src.t5_wrapper import FiDT5
 from baselines.fid.src.save_load_model import load, set_optim
 from baselines.fid.trainer import train
 from baselines.fid.options import Options
+from dssk.utils.scripting import get_local_rank_and_world_size
+
+from torch.distributed.elastic.multiprocessing.errors import record
 
 
 def init_logger(is_main=True, is_distributed=False, filename=None):
@@ -43,44 +46,15 @@ def init_logger(is_main=True, is_distributed=False, filename=None):
 
 def init_distributed_mode(params):
     """
-    Handle single and multi-GPU / multi-node.
+    Handle single and multi-GPU.
     Initialize the following variables:
-        - n_nodes
-        - node_id
         - local_rank
-        - global_rank
         - world_size
     """
-    has_local_rank = hasattr(params, "local_rank")
 
-    # multi-GPU job (local or multi-node) - jobs started with torch.distributed.launch
-    if not opt.debug and has_local_rank and params.local_rank != -1:
-        assert params.main_port == -1
-
-        # read environment variables
-        params.global_rank = int(os.environ["RANK"])
-        params.world_size = int(os.environ["WORLD_SIZE"])
-        params.n_gpu_per_node = int(os.environ["NGPU"])
-
-        # number of nodes / node ID
-        params.n_nodes = params.world_size // params.n_gpu_per_node
-        params.node_id = params.global_rank // params.n_gpu_per_node
-        params.is_distributed = True
-
-    else:
-        n_gpu = torch.cuda.device_count()
-        params.n_nodes = 1
-        params.node_id = 0
-        params.local_rank = 0
-        params.global_rank = 0
-        params.world_size = n_gpu
-        params.n_gpu_per_node = n_gpu
-        params.is_distributed = False
-
-    # define whether this is the master process / if we are in distributed mode
-    params.is_main = params.node_id == 0 and params.local_rank == 0
-    params.multi_node = params.n_nodes > 1
-    params.multi_gpu = params.world_size > 1
+    params.local_rank, params.world_size = get_local_rank_and_world_size()
+    params.is_distributed = params.world_size > 1
+    params.is_main = params.local_rank == 0
 
     # set GPU device
     if params.is_distributed:
@@ -106,11 +80,12 @@ def init_distributed_mode(params):
         )
 
 
-if __name__ == "__main__":
+@record
+def main(explicit_arguments: Optional[list[str]] = None) -> str:
     options = Options()
     options.add_reader_options()
     options.add_optim_options()
-    opt = options.parse()
+    opt = options.parse(explicit_arguments)
 
     torch.manual_seed(opt.seed)
     init_distributed_mode(opt)
@@ -171,12 +146,11 @@ if __name__ == "__main__":
             find_unused_parameters=False,
         )
 
-    if opt.local_rank == 0:
-        wandb_run = wandb.init(
-            name=None,
-            project=opt.name,
-            mode="disabled" if opt.debug else None,  # no logging while debugging
-        )
+    wandb_run = wandb.init(
+        name=None,
+        project=opt.name,
+        mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
+    )
 
     logger.info("Start training")
     train(
@@ -194,3 +168,7 @@ if __name__ == "__main__":
         logger,
         wandb_run,
     )
+
+
+if __name__ == "__main__":
+    main()
