@@ -1,6 +1,7 @@
 import json
 import os
 import torch
+from safetensors.torch import load_file as load_safetensors
 from dssk.models.cross_attn.get_model import get_model
 from dssk.models.get_tokenizer import get_tokenizer
 
@@ -48,8 +49,11 @@ def load_checkpoint(ckp_path, device="cpu"):
 
     # load weights from checkpoint (might be split into multiple files)
     checkpoint = {}
+    # Only one of the following two `for` loops will do something.
     for p in glob(os.path.join(ckp_path, "pytorch_model-*.bin")):
         checkpoint |= torch.load(p, map_location=torch.device(device))
+    for p in glob(os.path.join(ckp_path, "model-*.safetensors")):
+        checkpoint |= load_safetensors(p, device=device)
 
     model.load_state_dict(checkpoint)
 

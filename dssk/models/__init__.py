@@ -27,7 +27,7 @@ def infer_model_type(model_path: Optional[str] = None, model_ckpt: Optional[str]
                 candidates.add(model_type)
                 continue
     if len(candidates) == 1:
-        return next(iter(candidates))
+        return candidates.pop()
     if not candidates:
         raise ValueError("Cannot infer model_type: no candidate found.")
     else:

@@ -71,7 +71,12 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Handle max length
         if model_max_length is None:
-            model_max_length = self.model.transformer.wpe.num_embeddings
+            if hasattr(self.model.config, "max_position_embeddings"):
+                model_max_length = self.model.config.max_position_embeddings
+            elif "wpe" in self.model.transformer:
+                model_max_length = self.model.transformer.wpe.num_embeddings
+            else:
+                raise ValueError("Cannot automatically infer model_max_length.")
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
     @property
