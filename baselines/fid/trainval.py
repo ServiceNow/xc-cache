@@ -105,7 +105,10 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     )
     # maximal number of tokens for T5 is 512
     collator = Collator(
-        min(opt.text_maxlength, 512), tokenizer, answer_maxlength=opt.answer_maxlength
+        min(opt.text_maxlength, 512),
+        tokenizer,
+        answer_maxlength=opt.answer_maxlength,
+        max_contexts=opt.max_contexts,
     )
 
     train_dataset = load_dataset(
