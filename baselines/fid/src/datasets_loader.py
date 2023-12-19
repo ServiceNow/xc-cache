@@ -88,10 +88,11 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
 
 
 class Collator(object):
-    def __init__(self, text_maxlength, tokenizer, answer_maxlength=20):
+    def __init__(self, text_maxlength, tokenizer, answer_maxlength=20, max_contexts=10):
         self.tokenizer = tokenizer
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
+        self.max_contexts = max_contexts
 
     def _get_target(self, example):
         ans = example.get("answer", None)
@@ -100,6 +101,7 @@ class Collator(object):
 
     def _format_input(self, example):
         n_contexts = len(example["contexts_list"])
+
         if n_contexts < 1:
             passages = [f"question: {example['question']}"]
 
@@ -113,7 +115,8 @@ class Collator(object):
                 for i in ctx_index
             ]
 
-        return passages
+        # return only first contexts. This might drop gold contexts
+        return passages[: self.max_contexts]
 
     def __call__(self, batch_list):
         index = torch.tensor([ex["sample_idx"] for ex in batch_list])
