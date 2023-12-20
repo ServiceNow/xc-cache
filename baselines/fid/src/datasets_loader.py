@@ -6,9 +6,10 @@
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
 import torch
-from random import shuffle
 
 from torch.utils.data import RandomSampler, Sampler
+
+from dssk.data.utils.pre_processors import PosContextPreProcessor
 
 
 class BatchSampler(Sampler):
@@ -102,21 +103,26 @@ class Collator(object):
     def _format_input(self, example):
         n_contexts = len(example["contexts_list"])
 
-        if n_contexts < 1:
+        if n_contexts < 1:  # no contexts provided
             passages = [f"question: {example['question']}"]
 
+        elif n_contexts == 1:  # only one gold context provided
+            passages = [
+                f"question: {example['question']} title: {example['titles_list'][0]} context: {example['contexts_list'][0]}"
+            ]
+
         else:
-            # shuffle to be robust to variation in gold context position
-            ctx_index = list(range(n_contexts))
-            shuffle(ctx_index)
+            # select all gold and some distractors (for a total of up to max_contexts), and shuffle them to be robust to order variations
+            ctx_index = PosContextPreProcessor.truncate_true_list(
+                list(range(n_contexts)), example["useful_contexts"], max_items=self.max_contexts
+            )
 
             passages = [
                 f"question: {example['question']} title: {example['titles_list'][i]} context: {example['contexts_list'][i]}"
                 for i in ctx_index
             ]
 
-        # return only first contexts. This might drop gold contexts
-        return passages[: self.max_contexts]
+        return passages
 
     def __call__(self, batch_list):
         index = torch.tensor([ex["sample_idx"] for ex in batch_list])
