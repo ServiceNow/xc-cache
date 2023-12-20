@@ -302,29 +302,31 @@ class PosContextPreProcessor:
             returns ['e', 'c', 'b']
         """
 
+        # If no max_items specified, no truncation will occur
+        if max_items is None:
+            max_items = len(item_list)
+
+        # You need to return at least one item.
+        assert max_items > 0
+
         # Split the array into two lists based on the mask
         false_list = np.ma.masked_array(item_list, mask=mask).compressed()
         true_list = np.ma.masked_array(item_list, mask=np.logical_not(mask)).compressed()
 
         true_len = len(true_list)
-        item_len = len(item_list)
-
-        # If no max_items speicified, no turncation will occur
-        if max_items is None:
-            max_items = item_len
-
-        # You need to return at least one item.
-        assert max_items > 0 and max_items <= item_len
 
         if max_items > true_len:
-            # We have to truncate the false items
-            final_list = np.concatenate(
-                [
-                    true_list,
-                    np.random.choice(a=false_list, size=max_items - true_len, replace=False),
-                ]
-            )
-            # Shuffle the final list
+            if len(false_list) >= max_items - true_len:
+                false_list = np.random.choice(
+                    a=false_list, size=max_items - true_len, replace=False
+                )
+
+            # Truncate the false items
+            final_list = np.concatenate([true_list, false_list])[
+                :max_items
+            ]  # this works even if max_items > item_len
+
+            # Shuffle the final list, so that true items are not always at the begginning
             np.random.shuffle(final_list)
         else:
             # No false items are reported. We sample from true items instead.
