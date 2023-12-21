@@ -317,14 +317,12 @@ class PosContextPreProcessor:
 
         if max_items > true_len:
             if len(false_list) >= max_items - true_len:
+                # Truncate the false items
                 false_list = np.random.choice(
                     a=false_list, size=max_items - true_len, replace=False
                 )
 
-            # Truncate the false items
-            final_list = np.concatenate([true_list, false_list])[
-                :max_items
-            ]  # this works even if max_items > item_len
+            final_list = np.concatenate([true_list, false_list])
 
             # Shuffle the final list, so that true items are not always at the begginning
             np.random.shuffle(final_list)
