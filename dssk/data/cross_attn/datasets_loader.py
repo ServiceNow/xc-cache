@@ -55,7 +55,7 @@ def apply_fim_transform(
     return input_tokens
 
 
-class DatasetWithContextEmbedding(Dataset):
+class DatasetWithContext(Dataset):
     """Indexed dataset class with context, question, answer, and context embeddings."""
 
     def __init__(
@@ -149,6 +149,9 @@ class DatasetWithContextEmbedding(Dataset):
         return {
             "input_ids": input_ids,
             "context_input_ids": context_input_ids,
+            "input_str": input_str,
+            "context_str": context_str,
+            "do_fim_transform": do_fim_transform,
         }
 
 
@@ -257,13 +260,13 @@ def data_prep(
         tokenizer_path,
     )
 
-    training_dataset = DatasetWithContextEmbedding(
+    training_dataset = DatasetWithContext(
         training_data,
         context_length=context_length,
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
     )
-    validation_dataset = DatasetWithContextEmbedding(
+    validation_dataset = DatasetWithContext(
         validation_data,
         context_length=context_length,
         tokenizer=tokenizer,
