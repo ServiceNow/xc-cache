@@ -9,7 +9,6 @@ import logging
 import sys
 import torch
 import transformers
-import wandb
 
 from datasets import load_dataset
 from pathlib import Path
@@ -17,31 +16,12 @@ from typing import Optional
 
 from baselines.fid.src.datasets_loader import Collator
 from baselines.fid.src.t5_wrapper import FiDT5
-from baselines.fid.src.save_load_model import load, set_optim
-from baselines.fid.trainer import train
+from baselines.fid.get_training_args import get_training_args
+from baselines.fid.trainer import get_trainer
 from baselines.fid.options import Options
-from dssk.utils.scripting import get_local_rank_and_world_size
+from dssk.utils.scripting import get_local_rank_and_world_size, set_random_seed, print_rank_0
 
 from torch.distributed.elastic.multiprocessing.errors import record
-
-
-def init_logger(is_main=True, is_distributed=False, filename=None):
-    logger = logging.getLogger()
-
-    if is_distributed:
-        torch.distributed.barrier()
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if filename is not None:
-        handlers.append(logging.FileHandler(filename=filename))
-    logging.basicConfig(
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if is_main else logging.WARN,
-        format="[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s",
-        handlers=handlers,
-    )
-    logging.getLogger("transformers.tokenization_utils").setLevel(logging.ERROR)
-    logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
-    return logger
 
 
 def init_distributed_mode(params):
@@ -87,25 +67,30 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     options.add_optim_options()
     opt = options.parse(explicit_arguments)
 
-    torch.manual_seed(opt.seed)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        level=logging.INFO,
+    )
+    logger = logging.getLogger(__name__)
+
     init_distributed_mode(opt)
-
-    checkpoint_path = Path(opt.checkpoint_dir) / opt.name
-
-    if opt.is_distributed:
-        torch.distributed.barrier()
-    checkpoint_path.mkdir(parents=True, exist_ok=True)
-
-    logger = init_logger(opt.is_main, opt.is_distributed, checkpoint_path / "run.log")
+    set_random_seed(
+        opt.local_rank + opt.seed
+    )  # different seed for different sampling depending on global_rank
 
     model_name = "t5-" + opt.model_size
-
-    tokenizer = transformers.T5Tokenizer.from_pretrained(
-        model_name, model_max_length=opt.text_maxlength
-    )
     # maximal number of tokens for T5 is 512
+    text_maxlentgh = min(opt.text_maxlength, 512)
+    checkpoint_path = Path(opt.name) / model_name
+
+    model = FiDT5.from_pretrained(model_name)
+    tokenizer = transformers.T5Tokenizer.from_pretrained(
+        model_name, model_max_length=text_maxlentgh
+    )
     collator = Collator(
-        min(opt.text_maxlength, 512),
+        text_maxlentgh,
         tokenizer,
         answer_maxlength=opt.answer_maxlength,
         max_contexts=opt.max_contexts,
@@ -117,29 +102,6 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     eval_dataset = load_dataset(
         f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="val"
     )
-    if opt.model_path != "none":  # either load specific checkpoint
-        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, opt.model_path, opt, logger, reset_params=True
-        )
-        logger.info(f"Model loaded from {opt.model_path}")
-    elif (
-        len(list(checkpoint_path.glob("checkpoint/step*"))) > 0
-    ):  # or load latest checkpoint if found
-        latest_path = checkpoint_path / "checkpoint" / "latest"
-
-        model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = load(
-            FiDT5, latest_path.readlink(), opt, logger, reset_params=False
-        )
-        logger.info(f"Model loaded from {latest_path}")
-    else:  # or instantiate new model
-        t5 = transformers.T5ForConditionalGeneration.from_pretrained(model_name)
-        model = FiDT5(t5.config)
-        model.load_t5(t5.state_dict())
-        model = model.to(opt.local_rank)
-        optimizer, scheduler = set_optim(opt, model)
-        step, best_dev_em = 0, 0.0
-
-    model.set_checkpoint(opt.use_checkpoint)
 
     if opt.is_distributed:
         model = torch.nn.parallel.DistributedDataParallel(
@@ -149,34 +111,49 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
             find_unused_parameters=False,
         )
 
-    config = {}
-    for k, value in vars(opt).items():
-        if isinstance(value, (int, str, bool, float)):
-            config[k] = value
+    # instantiate HF dataobject for trainer's configuration
+    training_args = get_training_args(opt, checkpoint_path, opt.local_rank, opt.world_size)
 
-    wandb_run = wandb.init(
-        name=None,
-        project=opt.name,
-        mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
-        config=config,
-    )
+    # print model and other stats
+    if opt.debug:
+        print_rank_0(logger.info, training_args)
+        print_rank_0(logger.info, model)
+        print_rank_0(logger.info, f"Training data size: {len(train_dataset)}")
+        print_rank_0(logger.info, f"Validation data size: {len(eval_dataset)}")
 
-    logger.info("Start training")
-    train(
-        model,
-        tokenizer,
-        optimizer,
-        scheduler,
-        step,
-        train_dataset,
-        eval_dataset,
-        opt,
-        collator,
-        best_dev_em,
-        checkpoint_path,
-        logger,
-        wandb_run,
+        total_params = 0
+        trainable_params = 0
+
+        for _, v in model.named_parameters():
+            total_params += v.data.numel()
+            if v.requires_grad:
+                trainable_params += v.data.numel()
+
+        print_rank_0(
+            logger.info,
+            f"Total parameters: {total_params}\nTrainable parameters: {trainable_params}",
+        )
+
+    # get HF trainer
+    trainer = get_trainer(
+        model=model,
+        data_collator=collator,
+        opt=opt,
+        training_args=training_args,
+        training_data=train_dataset,
+        validation_data=eval_dataset,
     )
+    # resume training from specified checkpoint path
+    if opt.model_path is not None:
+        resume_ckpt = opt.model_path
+    # or from the last checkpoint saved in savedir. If no checkpoints are found, training is done from scratch
+    else:
+        resume_ckpt = any(dir.startswith("checkpoint") for dir in checkpoint_path.iterdir())
+
+    # train and evaluate on validation set + logging and checkpointing
+    trainer.train(resume_from_checkpoint=resume_ckpt)
+
+    logger.info("Experiment done\n")
 
 
 if __name__ == "__main__":
