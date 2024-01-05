@@ -7,167 +7,151 @@
 
 import numpy as np
 import torch
+import wandb
 
+from datasets import Dataset
 from torch.utils.data import DataLoader, SequentialSampler, Subset
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
+from transformers import DataCollator, Trainer, TrainerCallback, TrainingArguments
 
 from baselines.fid.src.datasets_loader import BatchSampler
-from baselines.fid.src.metrics import average_main, ems, weighted_average
-from baselines.fid.src.save_load_model import save
+from baselines.fid.options import Options
+from baselines.fid.src.t5_wrapper import FiDT5
 
-from dssk.utils.scripting import set_random_seed
-
-
-def train(
-    model,
-    tokenizer,
-    optimizer,
-    scheduler,
-    step,
-    train_dataset,
-    eval_dataset,
-    opt,
-    collator,
-    best_dev_em,
-    checkpoint_path,
-    logger,
-    wandb_run,
-):
-    set_random_seed(
-        opt.local_rank + opt.seed
-    )  # different seed for different sampling depending on global_rank
-
-    train_sampler = BatchSampler(train_dataset, opt.per_gpu_batch_size)
-    train_dataloader = DataLoader(
-        train_dataset,
-        sampler=train_sampler,
-        batch_size=opt.per_gpu_batch_size,
-        num_workers=0 if opt.debug else opt.n_workers,
-        collate_fn=collator,
-        drop_last=False,
-    )
-
-    _, curr_loss = 0.0, 0.0
-    epoch = 1
-    model.train()
-    while step < opt.total_steps:
-        epoch += 1
-
-        pbar = tqdm(train_dataloader)
-        for batch in pbar:
-            step += 1
-            (_, labels, _, context_ids, context_mask) = batch
-
-            train_loss = model(
-                input_ids=context_ids.cuda(),
-                attention_mask=context_mask.cuda(),
-                labels=labels.cuda(),
-            )[0]
-
-            train_loss.backward()
-
-            if step % opt.accumulation_steps == 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), opt.clip)
-                optimizer.step()
-                scheduler.step()
-                model.zero_grad()
-
-            train_loss = average_main(train_loss, opt)
-            curr_loss += train_loss.item()
-
-            wandb_run.log({"train/loss": train_loss.item()})
-
-            if step % opt.eval_freq == 0:
-                dev_em, val_loss = evaluate(model, eval_dataset, tokenizer, collator, opt)
-                model.train()
-                if opt.is_main:
-                    log = f"{step} / {opt.total_steps} |"
-                    log += f"train: {curr_loss/opt.eval_freq:.3f} |"
-                    log += f"evaluation: {100*dev_em:.2f}EM |"
-                    log += f"lr: {scheduler.get_last_lr()[0]:.5f}"
-                    logger.info(log)
-
-                    wandb_run.log(
-                        {
-                            "lr": scheduler.get_last_lr()[0],
-                            "val/EM": 100 * dev_em,
-                            "val/loss": val_loss.item(),
-                        }
-                    )
-
-                    pbar.set_description(f"Loss: {curr_loss / (opt.eval_freq)}, val EM: {dev_em}")
-                    curr_loss = 0.0
-
-            if opt.is_main and (step % opt.save_freq == 0 or step == opt.total_steps):
-                if dev_em > best_dev_em:
-                    best_dev_em = dev_em
-                    save_name = "best_dev"
-                else:
-                    save_name = f"step-{step}"
-
-                save(
-                    model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    best_dev_em,
-                    opt,
-                    checkpoint_path,
-                    save_name,
-                )
-            if step > opt.total_steps:
-                break
+from typing import Optional, Dict
 
 
-def evaluate(model, dataset, tokenizer, collator, opt):
-    if opt.eval_subset > 0:
-        # evaluate on subset of random samples
-        subset = Subset(
-            dataset, np.random.choice(len(dataset), opt.eval_subset, replace=False).tolist()
+class FiDTrainer(Trainer):
+    """Custom trainer class for training FiD."""
+
+    def __init__(
+        self,
+        model: FiDT5,
+        data_collator: DataCollator,
+        args: TrainingArguments,
+        opt: Options,
+        train_dataset: Dataset,
+        eval_dataset: Dataset,
+        callbacks: Optional[TrainerCallback] = None,
+    ):
+        super(FiDTrainer, self).__init__(
+            model=model,
+            data_collator=data_collator,
+            args=args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            callbacks=callbacks,
         )
-    else:
-        subset = dataset
 
-    if torch.distributed.is_initialized():
-        sampler = DistributedSampler(subset, shuffle=False)
-    else:
-        sampler = SequentialSampler(subset)
+        self.can_return_loss = True  # key override to log loss
+        self.eval_subset = opt.eval_subset
 
-    dataloader = DataLoader(
-        subset,
-        sampler=sampler,
-        batch_size=opt.per_gpu_batch_size,
-        drop_last=False,
-        num_workers=0 if opt.debug else opt.n_workers,
-        collate_fn=collator,
-    )
-    model.eval()
-    total = 0
-    exactmatch = []
-    model = model.module if hasattr(model, "module") else model
-    total_loss = 0
-    with torch.no_grad():
-        for batch in tqdm(dataloader):
-            (idx, labels, _, context_ids, context_mask) = batch
+    def log(self, logs: Dict[str, float]):
+        """
+        Log `logs` on the various objects watching training.
 
-            outputs = model.generate(
-                input_ids=context_ids.cuda(), attention_mask=context_mask.cuda(), max_length=50
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+
+        # # customized logging. track temperature of contrastive loss and avg center of split functions
+        # logs |= {
+        #     "loss_temperature": self.model.loss_temperature.item(),
+        #     "question_tree_bias_l2": torch.norm(self.model.question_tree.get_bias(), p=2).item(),
+        #     "context_tree_bias_l2": torch.norm(self.model.context_tree.get_bias(), p=2).item(),
+        # }
+
+        # default logging
+        if self.state.epoch is not None:
+            logs["epoch"] = round(self.state.epoch, 2)
+
+        output = {**logs, **{"step": self.state.global_step}}
+        self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        if self.eval_subset > 0:
+            # evaluate on subset of random samples
+            subset = Subset(
+                dataset, np.random.choice(len(dataset), self.eval_subset, replace=False).tolist()
             )
+        else:
+            subset = dataset
 
-            val_loss = model(
-                input_ids=context_ids.cuda(),
-                attention_mask=context_mask.cuda(),
-                labels=labels.cuda(),
-            )[0]
-            total_loss += average_main(val_loss, opt)
+        if torch.distributed.is_initialized():
+            sampler = DistributedSampler(subset, shuffle=False)
+        else:
+            sampler = SequentialSampler(subset)
 
-            for k, o in enumerate(outputs):
-                ans = tokenizer.decode(o, skip_special_tokens=True)
-                gold = dataset[idx[k].item()]["answer"]
-                score = ems(ans, gold)
-                total += 1
-                exactmatch.append(score)
+        dataloader = DataLoader(
+            subset,
+            sampler=sampler,
+            batch_size=self.args.per_device_eval_batch_size,
+            num_workers=self.args.dataloader_num_workers,
+            collate_fn=self.data_collator,
+            drop_last=False,
+        )
 
-    exactmatch, total = weighted_average(np.mean(exactmatch), total, opt)
-    return exactmatch, total_loss / len(dataloader)
+        return dataloader
+
+    def get_train_dataloader(self):
+        train_sampler = BatchSampler(self.train_dataset, self.args.per_device_train_batch_size)
+
+        train_dataloader = DataLoader(
+            self.train_dataset,
+            sampler=train_sampler,
+            batch_size=self.args.per_device_train_batch_size,
+            num_workers=self.args.dataloader_num_workers,
+            collate_fn=self.data_collator,
+            drop_last=False,
+        )
+
+        return train_dataloader
+
+
+def get_trainer(
+    model: FiDT5,
+    data_collator: DataCollator,
+    opt: Options,
+    training_args: TrainingArguments,
+    training_data: Dataset,
+    validation_data: Dataset,
+) -> Trainer:
+    """Intanstiates Trainer object.
+
+    Args:
+        model (FiDT5): Model to be trained.
+        data_collator (DataCollator): Data collator.
+        opt (Options): Command line arguments.
+        training_args (TrainingArguments): trainer's argument.
+        training_data (Dataset): Training dataset.
+        validation_data (Dataset): Validation dataset.
+
+    Returns:
+        Trainer: Configured trainer.
+    """
+
+    config = {}
+    for k, value in vars(opt).items():
+        if isinstance(value, (int, str, bool, float)):
+            config[k] = value
+
+    wandb.init(
+        name=None,
+        project=opt.name,
+        mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
+        config=config,
+    )
+
+    trainer = FiDTrainer(
+        model,
+        data_collator,
+        args=training_args,
+        opt=opt,
+        train_dataset=training_data,
+        eval_dataset=validation_data,
+    )
+
+    return trainer

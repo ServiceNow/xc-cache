@@ -13,16 +13,6 @@ import torch
 import torch.distributed as dist
 
 
-def average_main(x, opt):
-    if not opt.is_distributed:
-        return x
-    if opt.world_size > 1:
-        dist.reduce(x, 0, op=dist.ReduceOp.SUM)
-        if opt.is_main:
-            x = x / opt.world_size
-    return x
-
-
 def sum_main(x, opt):
     if not opt.is_distributed:
         return x

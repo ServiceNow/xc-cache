@@ -125,7 +125,6 @@ class Collator(object):
         return passages
 
     def __call__(self, batch_list):
-        index = torch.tensor([ex["sample_idx"] for ex in batch_list])
         target = [self._get_target(ex) for ex in batch_list]
         target = self.tokenizer.batch_encode_plus(
             target,
@@ -143,4 +142,10 @@ class Collator(object):
             text_passages, self.tokenizer, self.text_maxlength
         )
 
-        return (index, target_ids, target_mask, passage_ids, passage_masks)
+        return {
+            "labels": target_ids,
+            "input_ids": passage_ids,
+            "attention_mask": passage_masks,
+            # "index": index,
+            # "labels_mask": target_mask,
+        }
