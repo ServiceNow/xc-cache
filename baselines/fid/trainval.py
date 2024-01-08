@@ -102,7 +102,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
         resume_ckpt = opt.model_path
     # or from the last checkpoint saved in savedir. If no checkpoints are found, training is done from scratch
     else:
-        resume_ckpt = any(dir.startswith("checkpoint") for dir in checkpoint_path.iterdir())
+        resume_ckpt = len(list(checkpoint_path.glob("checkpoint*"))) > 0
 
     # train and evaluate on validation set + logging and checkpointing
     trainer.train(resume_from_checkpoint=resume_ckpt)

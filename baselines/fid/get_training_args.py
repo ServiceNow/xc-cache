@@ -48,6 +48,7 @@ def get_training_args(
         save_strategy="steps",
         save_steps=opt.save_freq,
         load_best_model_at_end=True,
+        save_on_each_node=False,
         # evaluation
         eval_steps=opt.eval_freq,
         evaluation_strategy="steps",
