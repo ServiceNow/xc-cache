@@ -52,7 +52,8 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, 
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
-    combined_context = "; ".join(context_text for context_text in d["contexts_list"])
+    # Using just a space as the separator
+    combined_context = " ".join(context_text for context_text in d["contexts_list"])
     prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
     input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
     if answered_example:
