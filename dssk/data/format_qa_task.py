@@ -44,6 +44,22 @@ def system_user_assistant_prompt_format(
     return {"input_str": input_str}
 
 
+def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+    """Native format of tulu v2 models (NOT for cross-attending models!)
+
+    Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
+    """
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    combined_context = "; ".join(context_text for context_text in d["contexts_list"])
+    prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
+    input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
+    if answered_example:
+        input_str = f"{input_str}{answer}"
+    return {"input_str": input_str}
+
+
 def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     if answered_example:
         raise NotImplementedError(
@@ -65,6 +81,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_colon": cross_colon_format,
     "cross_uaf": cross_user_assistant_format,
     "prompt": system_user_assistant_prompt_format,
+    "prompt_tulu2": tulu2_prompt_format,
     "fid": fid_format,
 }
 
