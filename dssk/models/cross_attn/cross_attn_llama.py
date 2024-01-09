@@ -575,11 +575,12 @@ class CrossAttnLlama(LlamaForCausalLM):
                 "use_cache": kwargs.get("use_cache"),
                 "position_ids": position_ids,
                 "attention_mask": attention_mask,
-                "token_type_ids": token_type_ids,
                 "encoder_hidden_states": encoder_hidden_states,
                 "encoder_attention_mask": encoder_attention_mask,
             }
         )
+        if token_type_ids:
+            model_inputs["token_type_ids"] = token_type_ids
         return model_inputs
 
     def train(self, mode: Optional[bool] = True) -> "CrossAttnLlama":

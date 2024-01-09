@@ -4,40 +4,24 @@ from datasets import Dataset
 from dssk.utils.hf_datasets import update_infodict
 
 
-def get_sample_info(d: dict[str, Any], answered_example: bool) -> tuple[str, str, str]:
-    """Get sample information for the "old contract" (aka "september format")
-    This is deprecated.
-    """
-    question_text = d["question_text"]
-    context_texts = d["context_texts"]
-    context_headers = d["contexts_headers"]
-    answer_text = d.get("answer_text", None)
-    if answered_example:
-        assert answer_text  # Both None and "" are illegal.
-    else:
-        answer_text = ""
-    return question_text, context_texts, context_headers, answer_text
-
-
 def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
     """
-    question_text, context_texts, _, answer_text = get_sample_info(d, answered_example)
-
-    self_input_text = f"question: {question_text} \n answer: {answer_text}"
-    cross_input_texts = [[f"context: {context_text}"] for context_text in context_texts]
-
-    return {"self_input_text": self_input_text, "cross_input_texts": cross_input_texts}
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    return {
+        "self_input_str": f"question: {d['question']} \n answer: {answer}",
+        "cross_input_str": f"context: {d['context']}",
+    }
 
 
 def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
-    answer = d.get("answer", None)
+    answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
-    else:
-        answer = ""
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{d['context']}",
@@ -47,15 +31,34 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
 def system_user_assistant_prompt_format(
     d: dict[str, Any], answered_example: bool
 ) -> dict[str, Any]:
-    question_text, context_texts, _, answer_text = get_sample_info(d, answered_example)
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
 
     # TODO: Revisit this formatting choice (only one context was tested, and not extensively).
-    combined_context = "; ".join(context_text for context_text in context_texts)
+    combined_context = "; ".join(context_text for context_text in d["contexts_list"])
     prefix = f"<|system|>\n{combined_context}\n<|end|>\n" if combined_context else ""
-    self_input_text = f"{prefix}<|user|>\n{question_text}\n<|end|>\n<|assistant|>"
+    input_str = f"{prefix}<|user|>\n{d['question']}\n<|end|>\n<|assistant|>"
     if answered_example:
-        self_input_text = f"{self_input_text}{answer_text}<|end|>"
-    return {"self_input_text": self_input_text, "cross_input_texts": []}
+        input_str = f"{input_str}{answer}<|end|>"
+    return {"input_str": input_str}
+
+
+def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+    """Native format of tulu v2 models (NOT for cross-attending models!)
+
+    Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
+    """
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    # Using just a space as the separator
+    combined_context = " ".join(context_text for context_text in d["contexts_list"])
+    prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
+    input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
+    if answered_example:
+        input_str = f"{input_str}{answer}"
+    return {"input_str": input_str}
 
 
 def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
@@ -76,8 +79,10 @@ def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
 
 
 KNOWN_QA_TASK_FORMATS = {
-    "cross": cross_colon_format,
+    "cross_colon": cross_colon_format,
+    "cross_uaf": cross_user_assistant_format,
     "prompt": system_user_assistant_prompt_format,
+    "prompt_tulu2": tulu2_prompt_format,
     "fid": fid_format,
 }
 
@@ -177,6 +182,10 @@ KNOWN_POST_CLEANUPS = {
             "self_input_text",
             "headers_before_long_answer",
         },
+    ),
+    "cross": (
+        None,
+        {"self_input_str", "cross_input_str", "context"},
     ),
     "fid": (
         None,

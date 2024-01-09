@@ -71,7 +71,12 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Handle max length
         if model_max_length is None:
-            model_max_length = self.model.transformer.wpe.num_embeddings
+            if hasattr(self.model.config, "max_position_embeddings"):
+                model_max_length = self.model.config.max_position_embeddings
+            elif "wpe" in self.model.transformer:
+                model_max_length = self.model.transformer.wpe.num_embeddings
+            else:
+                raise ValueError("Cannot automatically infer model_max_length.")
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
     @property
@@ -94,22 +99,13 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Input features that will be self-attended to.
         features = self.tokenizer(
-            [sample["self_input_text"]], return_tensors="pt", truncation=True
+            [sample["self_input_str"]], return_tensors="pt", truncation=True
         ).to(self.model.device)
 
-        # Handle context(s) to be cross-attended (CURRENTLY SUPPORTS UP TO ONE CONTEXT!)
-        cross_input_texts = sample.get("cross_input_texts", [])
-        if cross_input_texts:
-            if len(cross_input_texts) > 1:
-                raise NotImplementedError("I don't know yet how to handle multiple contexts!")
-            if len(cross_input_texts[0]) == 0:
-                raise ValueError("Context has no chunks.")
-            if len(cross_input_texts[0]) > 1:
-                raise NotImplementedError("I don't know yet how to handle multiple chunks!")
-
-            # At this point, there should be a single context, and it is in cross_input_texts[0][0]
+        # Context features to be cross-attended to
+        if sample["cross_input_str"]:
             context_fts = self.tokenizer(
-                [cross_input_texts[0][0]], return_tensors="pt", truncation=True
+                [sample["cross_input_str"]], return_tensors="pt", truncation=True
             ).to(self.model.device)
             args |= {
                 "context_ids": context_fts["input_ids"],
@@ -123,7 +119,7 @@ class CrossAttnInterface(AbstractLMInterface):
         try:
             output_text = self.tokenizer.decode(output[0, num_input_tokens:])
             return {
-                "output_text": output_text,
+                "answer_pred": output_text,
                 "error": False,
                 "error_msg": "",
             }
@@ -131,7 +127,7 @@ class CrossAttnInterface(AbstractLMInterface):
         # to an unstable GPU state, which can causes more error further down the line.
         except RuntimeError as e:
             return {
-                "output_text": "",
+                "answer_pred": "",
                 "error": True,
                 "error_msg": str(e),
             }

@@ -3,7 +3,7 @@ from typing import Optional
 __all__ = ["KNOWN_MODEL_TYPE", "get_model_string", "infer_model_type"]
 
 # Associate model types with substrings that hint that this type may apply.
-KNOWN_MODEL_TYPE = {"fid": {"fid"}, "llama": {"llama"}, "gptbigcode": {"code"}}
+KNOWN_MODEL_TYPE = {"fid": {"fid"}, "llama": {"llama", "tulu"}, "gptbigcode": {"code"}}
 
 
 def get_model_string(model_path: Optional[str] = None, model_ckpt: Optional[str] = None) -> str:
@@ -27,7 +27,7 @@ def infer_model_type(model_path: Optional[str] = None, model_ckpt: Optional[str]
                 candidates.add(model_type)
                 continue
     if len(candidates) == 1:
-        return next(iter(candidates))
+        return candidates.pop()
     if not candidates:
         raise ValueError("Cannot infer model_type: no candidate found.")
     else:
