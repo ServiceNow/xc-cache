@@ -108,7 +108,7 @@ class CrossAttnInterface(AbstractLMInterface):
                 context_ids_list, encoder_attn_mask_list = [], []
                 for context_str in sample["cross_input_str"]:
                     context_fts = self.tokenizer(
-                        [sample["cross_input_str"]], return_tensors="pt", truncation=True
+                        [context_str], return_tensors="pt", truncation=True
                     ).to(self.model.device)
                     context_ids_list.append(context_fts["input_ids"])
                     encoder_attn_mask_list.append(context_fts["attention_mask"])
