@@ -1,3 +1,4 @@
+import textwrap
 import torch
 import numpy as np
 from typing import List, Dict, Optional, Any
@@ -196,7 +197,7 @@ class PosContextPreProcessor:
     """
     The class is used to preprocess a dataset so that
     the true context(s) is always at a given positions(s).
-    Useful for performaing ablations.
+    Useful for performing sensitivity analysis.
     It is expected to be used with the HF dataset.map() function.
     The processing can be applied to batches of size > 1,
     as long as samples in the same batch have same shape.
@@ -215,8 +216,10 @@ class PosContextPreProcessor:
 
     def __init__(self, position_list: List[int], ignore_pos_overflow: bool = True) -> None:
         """
-        position_list is a list of new positions where we want the true
-        contexts to be.  If None, then leave positions as is.
+        :position_list: list[int] of new positions where we want the true contexts to be.
+        If None, then leave positions as is.
+        :ignore_pos_overflow: if True, position indices that are larger than the length of
+        the context list are ignored quietly. Otherwise, throw an exception.
         """
         # If we have duplicate indices, raise an exception
         if len(np.unique(position_list)) != len(position_list):
@@ -329,3 +332,66 @@ class PosContextPreProcessor:
             final_list = np.random.choice(true_list, size=max_items, replace=False)
 
         return final_list
+
+
+class SplitContextPreProcessor(PosContextPreProcessor):
+    """
+    The class is used to preprocess a dataset so that
+    the contexts are concatenated then split into k pieces.
+    There is also the option to decide the position of the true contexts in the list.
+    Useful for performaing sensitivity analysis or for training models where each attention
+    layer receives a different part of the context.
+    """
+
+    def __init__(
+        self,
+        number_of_splits: int,
+        position_list: List[int] = None,
+        ignore_pos_overflow: bool = True,
+        split_offset: int = 5,
+    ) -> None:
+        """
+        :number_of_splits: the number of context splits to return.
+        :position_list: list[int] of new positions where we want the true contexts to be.
+        If None, then leave positions as is.
+        :ignore_pos_overflow: if True, position indices that are larger than the length of
+        the context list are ignored quietly. Otherwise, throw an exception.
+        :split_offset: the number of characters that each split is allowed to differ from each other.
+        If zero, the splits are exactly the same number of characters.
+        """
+        if position_list is not None:
+            super().__init__(position_list, ignore_pos_overflow)
+        self.position_list = position_list
+        self.number_of_splits = number_of_splits
+        self.split_offset = split_offset
+
+    def __call__(self, examples: Dict[str, List]) -> List:
+        """
+        Rearrange the contexts based on the position of the true contexts given in self.position_list.
+        Given a list of contexts and a list of true positions for each, rearrange each context list
+        so that the true contexts are at the desired positons (self.position_list).
+        """
+
+        if self.position_list is None:
+            reordered_examples = examples
+        else:
+            # Reorder based on position
+            reordered_examples = super().__call__(examples)
+
+        # For each context in the example batch, compute the length of each context string split
+        context_len = np.vectorize(len)(reordered_examples["context"]) // self.number_of_splits
+
+        # Split each context into pieces, with each piece having almost the same length (+ or - 5 characters)
+        split_contexts_list = [
+            textwrap.wrap(
+                reordered_examples["context"][i],
+                width=context_len[i] + self.split_offset,
+                max_lines=self.number_of_splits,
+                drop_whitespace=True,
+            )
+            for i in range(len(reordered_examples["context"]))
+        ]
+
+        reordered_examples["split_contexts_list"] = split_contexts_list
+
+        return reordered_examples
