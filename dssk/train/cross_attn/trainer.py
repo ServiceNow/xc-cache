@@ -29,10 +29,20 @@ class CustomTrainer(Trainer):
                 encoder = model.module.transformer.eval()
             except AttributeError:
                 encoder = model.transformer.eval()
-            encoder_hidden_states = encoder(
-                input_ids=context_input_ids,
-                attention_mask=inputs["encoder_attention_mask"],
-            ).last_hidden_state.detach()
+            if isinstance(context_input_ids, list):
+                # If we get a list of contexts, we embed each context indepedently.
+                encoder_hidden_states = [
+                    encoder(
+                        input_ids=context_ids,
+                        attention_mask=inputs["encoder_attention_mask"],
+                    ).last_hidden_state.detach()
+                    for context_ids in context_input_ids
+                ]
+            else:
+                encoder_hidden_states = encoder(
+                    input_ids=context_input_ids,
+                    attention_mask=inputs["encoder_attention_mask"],
+                ).last_hidden_state.detach()
         inputs.update({"encoder_hidden_states": encoder_hidden_states})
 
         outputs = model(**inputs)
