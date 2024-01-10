@@ -25,6 +25,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     options = Options()
     options.add_reader_options()
     options.add_optim_options()
+    options.add_eval_options()
     opt = options.parse(explicit_arguments)
 
     logging.basicConfig(
@@ -49,7 +50,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
 
     model = FiDT5.from_pretrained(model_name)
     tokenizer = transformers.T5Tokenizer.from_pretrained(
-        model_name, model_max_length=text_maxlentgh
+        "t5-base", model_max_length=text_maxlentgh
     )
     collator = Collator(
         text_maxlentgh,

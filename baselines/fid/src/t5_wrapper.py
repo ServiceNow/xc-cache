@@ -87,9 +87,11 @@ class EncoderWrapper(torch.nn.Module):
     def __init__(self, encoder, use_checkpoint=False):
         super().__init__()
 
+        # attributes needed by recent HF transformers
         self.main_input_name = encoder.main_input_name
         self.embed_tokens = encoder.embed_tokens
         self.encoder = encoder
+
         apply_checkpoint_wrapper(self.encoder, use_checkpoint)
 
     def forward(

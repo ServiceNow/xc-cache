@@ -12,6 +12,7 @@ from torch.utils.data import RandomSampler, Sampler
 from dssk.data.utils.pre_processors import PosContextPreProcessor
 
 
+# new class
 class BatchSampler(Sampler):
     def __init__(self, data_source, batch_size):
         """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.

@@ -1,10 +1,3 @@
-# Code adapted from https://github.com/facebookresearch/FiD/tree/main.
-# Copyright (c) Facebook, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
-
 import numpy as np
 import torch
 import wandb
@@ -54,13 +47,6 @@ class FiDTrainer(Trainer):
             logs (`Dict[str, float]`):
                 The values to log.
         """
-
-        # # customized logging. track temperature of contrastive loss and avg center of split functions
-        # logs |= {
-        #     "loss_temperature": self.model.loss_temperature.item(),
-        #     "question_tree_bias_l2": torch.norm(self.model.question_tree.get_bias(), p=2).item(),
-        #     "context_tree_bias_l2": torch.norm(self.model.context_tree.get_bias(), p=2).item(),
-        # }
 
         # default logging
         if self.state.epoch is not None:
@@ -133,11 +119,13 @@ def get_trainer(
         Trainer: Configured trainer.
     """
 
+    # prepare experiment config to log in wandb
     config = {}
     for k, value in vars(opt).items():
         if isinstance(value, (int, str, bool, float)):
             config[k] = value
 
+    # init wandb logger
     wandb.init(
         name=None,
         project=opt.name,
@@ -145,6 +133,7 @@ def get_trainer(
         config=config,
     )
 
+    # instantiate FiD-T5 trainer
     trainer = FiDTrainer(
         model,
         data_collator,
