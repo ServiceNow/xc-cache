@@ -106,7 +106,7 @@ class CrossAttnInterface(AbstractLMInterface):
         if sample["cross_input_str"]:
             if isinstance(sample["cross_input_str"], list):
                 context_ids_list, encoder_attn_mask_list = [], []
-                for context_str in ample["cross_input_str"]:
+                for context_str in sample["cross_input_str"]:
                     context_fts = self.tokenizer(
                         [sample["cross_input_str"]], return_tensors="pt", truncation=True
                     ).to(self.model.device)
