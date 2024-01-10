@@ -104,13 +104,26 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Context features to be cross-attended to
         if sample["cross_input_str"]:
-            context_fts = self.tokenizer(
-                [sample["cross_input_str"]], return_tensors="pt", truncation=True
-            ).to(self.model.device)
-            args |= {
-                "context_ids": context_fts["input_ids"],
-                "encoder_attention_mask": context_fts["attention_mask"],
-            }
+            if isinstance(sample["cross_input_str"], list):
+                context_ids_list, encoder_attn_mask_list = [], []
+                for context_str in sample["cross_input_str"]:
+                    context_fts = self.tokenizer(
+                        [context_str], return_tensors="pt", truncation=True
+                    ).to(self.model.device)
+                    context_ids_list.append(context_fts["input_ids"])
+                    encoder_attn_mask_list.append(context_fts["attention_mask"])
+                args |= {
+                    "context_ids": context_ids_list,
+                    "encoder_attention_mask": encoder_attn_mask_list,
+                }
+            else:
+                context_fts = self.tokenizer(
+                    [sample["cross_input_str"]], return_tensors="pt", truncation=True
+                ).to(self.model.device)
+                args |= {
+                    "context_ids": context_fts["input_ids"],
+                    "encoder_attention_mask": context_fts["attention_mask"],
+                }
 
         # pad_token_id is a valid kwargs for StarCoder, but it may not work for other models
         output = self.model.generate(**features, pad_token_id=self.tokenizer.eos_token_id, **args)
