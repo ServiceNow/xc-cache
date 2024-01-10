@@ -649,6 +649,12 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
             () if output_attentions and self.config.add_cross_attention else None
         )
         all_hidden_states = () if output_hidden_states else None
+
+        # cross_attn_layer_idx tracks the idx of the current cross-attn layer as we forward pass.
+        # It's only going to be used if encoder_hidden_states contains a list of different tensors
+        # to be cross-attended to.
+        cross_attn_layer_idx = 0
+
         for i, (block, layer_past) in enumerate(zip(self.transformer.h, past_key_values)):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -661,12 +667,14 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 cross_attn_outputs = self.cross_attn_forward(
                     hidden_states=hidden_states,
                     layer_idx=i,
+                    cross_attn_layer_idx=cross_attn_layer_idx,
                     head_mask=head_mask,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
+                cross_attn_layer_idx += 1
 
                 hidden_states = cross_attn_outputs[0]
 
@@ -720,12 +728,14 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 cross_attn_outputs = self.cross_attn_forward(
                     hidden_states=hidden_states,
                     layer_idx=i,
+                    cross_attn_layer_idx=cross_attn_layer_idx,
                     head_mask=head_mask,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
+                cross_attn_layer_idx += 1
 
                 hidden_states = cross_attn_outputs[0]
 
@@ -769,8 +779,11 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         hidden_states: torch.FloatTensor,
         layer_idx: int,
         head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attn_layer_idx: Optional[
+            int
+        ] = -1,  # This is only used if encoder_hidden_states is a list of tensors to cross-attend to.
+        encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
+        encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
     ) -> Union[
@@ -778,6 +791,13 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         Tuple[torch.Tensor, torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     ]:
+        if isinstance(encoder_hidden_states, list):
+            # if encoder_hidden_states is a list, we expect its length to match the number of cross-attn layers
+            # and cross_attn_layer_idx will be used to indicate which element should be used at the current layer.
+            encoder_hidden_states = encoder_hidden_states[cross_attn_layer_idx]
+            if encoder_attention_mask is not None:
+                encoder_attention_mask = encoder_attention_mask[cross_attn_layer_idx]
+
         if self.gradient_checkpointing and self.training:
 
             def create_custom_forward(module):

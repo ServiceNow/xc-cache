@@ -616,8 +616,8 @@ class CrossAttnLlama(LlamaForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
+        encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -689,6 +689,11 @@ class CrossAttnLlama(LlamaForCausalLM):
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
 
+        # cross_attn_layer_idx tracks the idx of the current cross-attn layer as we forward pass.
+        # It's only going to be used if encoder_hidden_states contains a list of different tensors
+        # to be cross-attended to.
+        cross_attn_layer_idx = 0
+
         for idx, decoder_layer in enumerate(self.transformer.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
@@ -703,11 +708,13 @@ class CrossAttnLlama(LlamaForCausalLM):
                 cross_attn_outputs = self.cross_attn_forward(
                     hidden_states=hidden_states,
                     layer_idx=idx,
+                    cross_attn_layer_idx=cross_attn_layer_idx,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
+                cross_attn_layer_idx += 1
 
                 hidden_states = cross_attn_outputs[0]
 
@@ -747,11 +754,13 @@ class CrossAttnLlama(LlamaForCausalLM):
                 cross_attn_outputs = self.cross_attn_forward(
                     hidden_states=hidden_states,
                     layer_idx=idx,
+                    cross_attn_layer_idx=cross_attn_layer_idx,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
+                cross_attn_layer_idx += 1
 
                 hidden_states = cross_attn_outputs[0]
 
@@ -827,8 +836,11 @@ class CrossAttnLlama(LlamaForCausalLM):
         self,
         hidden_states: torch.FloatTensor,
         layer_idx: int,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attn_layer_idx: Optional[
+            int
+        ] = -1,  # This is only used if encoder_hidden_states is a list of tensors to cross-attend to.
+        encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
+        encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
     ) -> Union[
@@ -836,6 +848,13 @@ class CrossAttnLlama(LlamaForCausalLM):
         Tuple[torch.Tensor, torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     ]:
+        if isinstance(encoder_hidden_states, list):
+            # if encoder_hidden_states is a list, we expect its length to match the number of cross-attn layers
+            # and cross_attn_layer_idx will be used to indicate which element should be used at the current layer.
+            encoder_hidden_states = encoder_hidden_states[cross_attn_layer_idx]
+            if encoder_attention_mask is not None:
+                encoder_attention_mask = encoder_attention_mask[cross_attn_layer_idx]
+
         if self.gradient_checkpointing and self.training:
             # TODO(Joao): Add this to the forward hook defined in self.prepare_for_training.
             hidden_states.requires_grad_(True)
