@@ -11,6 +11,8 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
     return {
         "self_input_str": f"question: {d['question']} \n answer: {answer}",
         "cross_input_str": f"context: {d['context']}",
@@ -22,6 +24,8 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{d['context']}",
