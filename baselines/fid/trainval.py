@@ -32,7 +32,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
-        level=logging.INFO,
+        level=logging.DEBUG if opt.debug else logging.INFO,
     )
     logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
 
     model = FiDT5.from_pretrained(model_name)
     tokenizer = transformers.T5Tokenizer.from_pretrained(
-        "t5-base", model_max_length=text_maxlentgh
+        model_name, model_max_length=text_maxlentgh
     )
     collator = Collator(
         text_maxlentgh,

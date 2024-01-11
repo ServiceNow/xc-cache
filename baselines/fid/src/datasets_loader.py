@@ -6,10 +6,13 @@
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
 import torch
+import logging
 
 from torch.utils.data import RandomSampler, Sampler
 
 from dssk.data.utils.pre_processors import PosContextPreProcessor
+
+logger = logging.getLogger(__name__)
 
 
 # new class
@@ -68,6 +71,7 @@ class BatchSampler(Sampler):
 
 def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
     passage_ids, passage_masks = [], []
+
     max_n_contexts = 0
     max_n_tokens = 0
     for text_passages in batch_text_passages:
@@ -80,11 +84,18 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
         )
         passage_ids.append(p["input_ids"])
         passage_masks.append(p["attention_mask"])
+        # keep track of maximal number of tokens and of contexts
         max_n_contexts = max(max_n_contexts, len(text_passages))
         max_n_tokens = max(max_n_tokens, p["attention_mask"].shape[1])
 
+    # number of contexts may vary within a batch. Need to pad that dimension
     passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0)
     passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0)
+
+    # log statistics
+    logger.debug(
+        f"batch's maximal number of tokens: {max_n_tokens} and of contexts {max_n_contexts}"
+    )
 
     return passage_ids, passage_masks.bool()
 
@@ -95,11 +106,6 @@ class Collator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
         self.max_contexts = max_contexts
-
-    def _get_target(self, example):
-        ans = example.get("answer", None)
-        return ans
-        # return target + " </s>" no need to add eos, already added by tokenizer
 
     def _format_input(self, example):
         n_contexts = len(example["contexts_list"])
@@ -126,7 +132,7 @@ class Collator(object):
         return passages
 
     def __call__(self, batch_list):
-        target = [self._get_target(ex) for ex in batch_list]
+        target = [example.get("answer", None) for example in batch_list]
         target = self.tokenizer.batch_encode_plus(
             target,
             max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
@@ -135,8 +141,9 @@ class Collator(object):
             truncation=self.answer_maxlength > 0,
         )
         target_ids = target["input_ids"]
-        target_mask = target["attention_mask"].bool()
-        target_ids = target_ids.masked_fill(~target_mask, -100)
+        target_ids = target_ids.masked_fill(
+            ~target["attention_mask"].bool(), -100
+        )  # padding tokens are ignored when computing the loss
 
         text_passages = [self._format_input(example) for example in batch_list]
         passage_ids, passage_masks = encode_passages(
@@ -147,6 +154,4 @@ class Collator(object):
             "labels": target_ids,
             "input_ids": passage_ids,
             "attention_mask": passage_masks,
-            # "index": index,
-            # "labels_mask": target_mask,
         }
