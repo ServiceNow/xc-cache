@@ -54,7 +54,7 @@ def get_training_args(
         evaluation_strategy="steps",
         # distributed
         ddp_find_unused_parameters=False,
-        deepspeed=opt.deepspeed,
+        deepspeed=opt.ds_config,
         local_rank=local_rank,
     )
 
