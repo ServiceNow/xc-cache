@@ -64,7 +64,7 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> 
         assert answer  # Both None and "" are illegal.
     # Using just a space as the separator
     combined_context = " ".join(context_text for context_text in d["contexts_list"])
-    prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
+    prefix = f"<|system|>\n{combined_context}\n" if (combined_context and include_context) else ""
     input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
     if answered_example:
         input_str = f"{input_str}{answer}"
@@ -101,6 +101,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_uaf": cross_user_assistant_format,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
+    "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "fid": fid_format,
 }
 
@@ -211,6 +212,10 @@ KNOWN_POST_CLEANUPS = {
     "cross": (
         None,
         {"self_input_str", "cross_input_str", "context"},
+    ),
+    "tulu2": (
+        None,
+        {"input_str", "context"},
     ),
     "fid": (
         None,

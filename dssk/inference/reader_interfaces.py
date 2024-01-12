@@ -1,12 +1,35 @@
 import json
 from typing import Any, Optional
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, T5Tokenizer
+import torch
+import peft
+from transformers import AutoModelForCausalLM, AutoTokenizer, T5Tokenizer, PreTrainedModel
 
 from baselines.fid.src.t5_wrapper import FiDT5
 
 from dssk.models.cross_attn.load_checkpoint import load_checkpoint
 from dssk.inference.abstract_lm_interface import AbstractLMInterface
+
+
+def _setup_peft_model(
+    model: PreTrainedModel, peft_config: dict[str, Any], model_peft_ckpt: str
+) -> peft.PeftModel:
+    with open(peft_config, "rt") as fp:
+        peft_config = json.load(fp)
+    peft_config = peft.LoraConfig(task_type=peft.TaskType.CAUSAL_LM, **peft_config)
+
+    for name, param in model.named_parameters():
+        # upcast LM head and layernorms
+        if any([k in name for k in ["lm_head", "wte", "ln_"]]):
+            param.data = param.data.to(torch.float32)
+
+    model = peft.get_peft_model(model, peft_config)
+
+    adapters_weights = torch.load(model_peft_ckpt, map_location="cpu")
+    _ = peft.set_peft_model_state_dict(model, adapters_weights)
+
+    # Make sure the extra model parts from PEFT are also in evaluation mode
+    return model.eval()
 
 
 class CrossAttnInterface(AbstractLMInterface):
@@ -23,6 +46,8 @@ class CrossAttnInterface(AbstractLMInterface):
         model_max_length: Optional[int] = None,
         model_path: Optional[str] = None,
         model_ckpt: Optional[str] = None,
+        peft_config: Optional[str] = None,
+        model_peft_ckpt: Optional[str] = None,
         ds_config: Optional[str] = None,
         to_device: Optional[str] = None,
         default_gen_args: Optional[dict[str, Any]] = None,
@@ -57,6 +82,13 @@ class CrossAttnInterface(AbstractLMInterface):
             self.tokenizer = AutoTokenizer.from_pretrained(model_path, cache_dir=cache_path)
             model = AutoModelForCausalLM.from_pretrained(model_path, cache_dir=cache_path)
 
+        self.model_peft_ckpt = model_peft_ckpt
+        if peft_config is not None:
+            assert self.model_peft_ckpt is not None
+            model = _setup_peft_model(model, peft_config, self.model_peft_ckpt)
+        else:
+            assert self.model_peft_ckpt is None
+
         # Second half of deepspeed configuration.
         if ds_config is not None:
             assert to_device is None
@@ -86,6 +118,7 @@ class CrossAttnInterface(AbstractLMInterface):
             "class_name": self.model.__class__.__name__,
             "name_or_path": self.model.name_or_path,
             "model_ckpt": self.model_ckpt,
+            "model_peft_ckpt": self.model_peft_ckpt,
             "default_gen_args": self.default_gen_args,
         }
 
@@ -97,13 +130,15 @@ class CrossAttnInterface(AbstractLMInterface):
         args = self.default_gen_args.copy()
         args.update(gen_args)
 
+        input_str = sample["self_input_str"] if "self_input_str" in sample else sample["input_str"]
+
         # Input features that will be self-attended to.
-        features = self.tokenizer(
-            [sample["self_input_str"]], return_tensors="pt", truncation=True
-        ).to(self.model.device)
+        features = self.tokenizer([input_str], return_tensors="pt", truncation=True).to(
+            self.model.device
+        )
 
         # Context features to be cross-attended to
-        if sample["cross_input_str"]:
+        if "cross_input_str" in sample and sample["cross_input_str"]:
             if isinstance(sample["cross_input_str"], list):
                 context_ids_list, encoder_attn_mask_list = [], []
                 for context_str in sample["cross_input_str"]:
