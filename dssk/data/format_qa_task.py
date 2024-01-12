@@ -52,7 +52,9 @@ def system_user_assistant_prompt_format(
     return {"input_str": input_str}
 
 
-def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def tulu2_prompt_format(
+    d: dict[str, Any], answered_example: bool, include_context: bool = True
+) -> dict[str, Any]:
     """Native format of tulu v2 models (NOT for cross-attending models!)
 
     Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
@@ -62,11 +64,16 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, 
         assert answer  # Both None and "" are illegal.
     # Using just a space as the separator
     combined_context = " ".join(context_text for context_text in d["contexts_list"])
-    prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
+    prefix = f"<|system|>\n{combined_context}\n" if (combined_context and include_context) else ""
     input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
     if answered_example:
         input_str = f"{input_str}{answer}"
     return {"input_str": input_str}
+
+
+def tulu2_prompt_format_no_context(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+    """Same as tulu2_prompt_format, but without including the context in the prompt."""
+    return tulu2_prompt_format(d, answered_example=answered_example, include_context=False)
 
 
 def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
@@ -91,6 +98,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_uaf": cross_user_assistant_format,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
+    "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "fid": fid_format,
 }
 
@@ -194,6 +202,10 @@ KNOWN_POST_CLEANUPS = {
     "cross": (
         None,
         {"self_input_str", "cross_input_str", "context"},
+    ),
+    "tulu2": (
+        None,
+        {"input_str", "context"},
     ),
     "fid": (
         None,
