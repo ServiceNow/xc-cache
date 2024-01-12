@@ -7,6 +7,7 @@ from baselines.fid.src.t5_wrapper import FiDT5
 
 from dssk.models.cross_attn.load_checkpoint import load_checkpoint
 from dssk.inference.abstract_lm_interface import AbstractLMInterface
+from dssk.models.toto import toto
 
 
 class CrossAttnInterface(AbstractLMInterface):
@@ -263,3 +264,48 @@ class FiDInterface(AbstractLMInterface):
     @property
     def end_token(self) -> str:
         return self.tokenizer.eos_token
+
+
+class TotoInterface(AbstractLMInterface):
+    """Silly/fake model used as a sanity check for evaluation
+
+    How high can we get those metrics without the ML? Without the question?
+    """
+
+    def __init__(
+        self,
+        *,
+        max_new_tokens: int,
+        prefix: str = "yes no UNANSWERABLE",
+        **kwargs,  # Ignored
+    ):
+        self.max_new_tokens = max_new_tokens
+        self.prefix = prefix
+
+    @property
+    def model_info(self) -> dict[str, Any]:
+        # See docstring in AbstractLMInterface.model_info
+        return {
+            "class_name": "Hi! I'm toto!",
+            "name_or_path": "Toto! Or path? Yes!",
+            "max_new_tokens": self.max_new_tokens,
+            "prefix": self.prefix,
+        }
+
+    def __call__(self, sample: dict[str, Any], **kwargs) -> dict[str, Any]:
+        question = sample["question"]
+        if "contexts_list" in sample:
+            contexts_list = sample["contexts_list"]
+        else:
+            contexts_list = [sample["context"]]
+        answer_pred = toto(question, contexts_list, self.max_new_tokens, self.prefix)
+
+        return {
+            "answer_pred": answer_pred,
+            "error": False,
+            "error_msg": "",
+        }
+
+    @property
+    def end_token(self) -> str:
+        return "What's an end_token?"
