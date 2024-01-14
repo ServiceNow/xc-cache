@@ -26,9 +26,13 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
+    if "context" in d:
+        context = d["context"]
+    else:
+        context = " ".join(c for c in d["contexts_list"])
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
-        "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{d['context']}",
+        "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
     }
 
 
