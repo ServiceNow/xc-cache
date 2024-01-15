@@ -65,6 +65,10 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     eval_dataset = load_dataset(
         f"ServiceNow/{opt.dataset_name}", cache_dir=opt.cache_path, split="val"
     )
+    # keep only datasets chosen for validation
+    eval_dataset = eval_dataset.filter(
+        lambda example: example["dataset"] in opt.val_datasets.split(";")
+    )
 
     # instantiate HF dataobject for trainer's configuration
     training_args = get_training_args(opt, checkpoint_path, opt.local_rank, opt.world_size)
