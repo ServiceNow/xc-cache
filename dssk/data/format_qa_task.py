@@ -13,9 +13,10 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> d
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
+    context = get_single_context_with_trivial_strategy(d)
     return {
         "self_input_str": f"question: {d['question']} \n answer: {answer}",
-        "cross_input_str": f"context: {d['context']}",
+        "cross_input_str": f"context: {context}",
     }
 
 
@@ -251,6 +252,8 @@ class CleanupQATask:
     def __call__(self, qa_task: Dataset) -> Dataset:
         if self.post_cleanup:
             formatter, dropped = KNOWN_POST_CLEANUPS[self.post_cleanup]
+            # Silently ignore dropping columns that don't exist
+            dropped = set(qa_task.column_names) & set(dropped)
             qa_task = qa_task.map(formatter, remove_columns=dropped)
 
         update_infodict(
