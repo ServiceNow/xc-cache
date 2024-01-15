@@ -39,7 +39,6 @@ class FiDTrainer(Trainer):
         self.can_return_loss = True  # key override to log loss
         self.eval_subset = opt.eval_subset
         self.train_datasets = opt.train_datasets
-        self.val_datasets = opt.val_datasets
 
     def log(self, logs: Dict[str, float]):
         """
@@ -60,9 +59,6 @@ class FiDTrainer(Trainer):
 
     def get_eval_dataloader(self, eval_dataset=None):
         dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-        dataset = dataset.filter(
-            lambda example: example["dataset"] in self.val_datasets.split(";")
-        )
 
         if self.eval_subset > 0:
             # evaluate on subset of random samples
