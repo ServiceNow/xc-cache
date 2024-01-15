@@ -68,14 +68,14 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> 
 
 
 def fid_format(
-    d: dict[str, Any], answered_example: bool, include_title: bool, **kwargs
+    d: dict[str, Any], answered_example: bool, include_title: bool, include_context: bool, **kwargs
 ) -> dict[str, Any]:
     if answered_example:
         raise NotImplementedError(
             "Answered examples (typically for training) are not implemented yet."
         )
 
-    if d["contexts_list"]:
+    if include_context and d["contexts_list"]:
         if include_title:
             template = "question: {question} title: {title} context: {context}"
         else:
@@ -107,6 +107,7 @@ def format_qa_task(
     task_format: Optional[str] = None,
     answered_example: bool = False,
     include_title: bool = False,
+    include_context: bool = True,
     **kwargs,
 ) -> Dataset:
     """Format a question answering task with a specific model in mind
@@ -145,7 +146,11 @@ def format_qa_task(
     if task_format:
         qa_task = qa_task.map(
             KNOWN_QA_TASK_FORMATS[task_format],
-            fn_kwargs={"answered_example": answered_example, "include_title": include_title},
+            fn_kwargs={
+                "answered_example": answered_example,
+                "include_title": include_title,
+                "include_context": include_context,
+            },
         )
 
     update_infodict(
