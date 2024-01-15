@@ -4,7 +4,7 @@ from datasets import Dataset
 from dssk.utils.hf_datasets import update_infodict
 
 
-def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
     """
@@ -19,7 +19,9 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
     }
 
 
-def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def cross_user_assistant_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
     answer = d.get("answer", "")
     if answered_example:
@@ -33,7 +35,7 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
 
 
 def system_user_assistant_prompt_format(
-    d: dict[str, Any], answered_example: bool
+    d: dict[str, Any], answered_example: bool, **kwargs
 ) -> dict[str, Any]:
     answer = d.get("answer", "")
     if answered_example:
@@ -48,7 +50,7 @@ def system_user_assistant_prompt_format(
     return {"input_str": input_str}
 
 
-def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
     """Native format of tulu v2 models (NOT for cross-attending models!)
 
     Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
@@ -65,15 +67,23 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool) -> dict[str, 
     return {"input_str": input_str}
 
 
-def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def fid_format(
+    d: dict[str, Any], answered_example: bool, include_title: bool, **kwargs
+) -> dict[str, Any]:
     if answered_example:
         raise NotImplementedError(
             "Answered examples (typically for training) are not implemented yet."
         )
 
     if d["contexts_list"]:
+        if include_title:
+            template = "question: {question} title: {title} context: {context}"
+        else:
+            # keeping the title tag, as tested models are trained with it
+            template = "question: {question} title: context: {context}"
+
         passages = [
-            f"question: {d['question']} title: {title} context: {context}"
+            template.format(question=d["question"], title=title, context=context)
             for context, title in zip(d["contexts_list"], d["titles_list"])
         ]
     else:
@@ -96,6 +106,7 @@ def format_qa_task(
     *,
     task_format: Optional[str] = None,
     answered_example: bool = False,
+    include_title: bool = False,
     **kwargs,
 ) -> Dataset:
     """Format a question answering task with a specific model in mind
@@ -133,7 +144,8 @@ def format_qa_task(
     """
     if task_format:
         qa_task = qa_task.map(
-            KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
+            KNOWN_QA_TASK_FORMATS[task_format],
+            fn_kwargs={"answered_example": answered_example, "include_title": include_title},
         )
 
     update_infodict(
