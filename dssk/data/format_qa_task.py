@@ -19,8 +19,12 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
     }
 
 
-def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+def legacy_cross_user_assistant_format(
+    d: dict[str, Any], answered_example: bool
+) -> dict[str, Any]:
+    """NOTE: This should be graveyarded in the near future.
+    For old cross-attention models with a base decoder using a <|user|> <|assistant|> template.
+    """
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
@@ -33,6 +37,26 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
+    }
+
+
+def cross_user_assistant_format(
+    d: dict[str, Any], answered_example: bool, eos_token: str = ""
+) -> dict[str, Any]:
+    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+    if "context" in d:
+        context = d["context"]
+    else:
+        context = " ".join(c for c in d["contexts_list"])
+    return {
+        "self_input_str": f"<|user|>\n<|Q|>{d['question']}\n<|assistant|>\n{answer}{eos_token}",
+        "cross_input_str": f"<|user|>\n<|C|>\n<|assistant|>\n{context}{eos_token}",
+        "cross_input_str_with_question": f"<|user|>\n<|Q|>{d['question']} - <|C|>\n<|assistant|>\n{context}{eos_token}",
     }
 
 
