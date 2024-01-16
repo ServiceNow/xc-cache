@@ -16,6 +16,7 @@ def apply_fim_transform(
     suffix_token_id: int,
     prefix_token_id: int,
     middle_token_id: int,
+    max_length: int,
     skip_start_n_tokens: int = 4,
 ) -> List[int]:
     assert len(input_tokens) > skip_start_n_tokens
@@ -36,7 +37,7 @@ def apply_fim_transform(
     middle = np.concatenate([np.array([middle_token_id]), middle])
 
     new_length = suffix.shape[0] + prefix.shape[0] + middle.shape[0]
-    diff = new_length - input_tokens.shape[0]
+    diff = new_length - max_length
 
     if diff > 0:  # too long
         if suffix.shape[0] <= diff:
@@ -139,6 +140,7 @@ class DatasetWithContext(Dataset):
                 self.fim_prefix_token_id,
                 self.fim_middle_token_id,
                 self.fim_suffix_token_id,
+                max_length=self.context_length,
             )
 
         # Context ids are used for embedding during training.
