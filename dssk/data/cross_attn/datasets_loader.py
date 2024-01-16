@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
-from dssk.data.format_qa_task import cross_user_assistant_format
+from dssk.data.format_qa_task import cross_uaf_question_in_context
 
 
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
@@ -116,7 +116,7 @@ class DatasetWithContext(Dataset):
             do_fim_transform = False  # No FIM for Q&A inputs.
             example_idx = i
 
-        formatted_example = cross_user_assistant_format(
+        formatted_example = cross_uaf_question_in_context(
             self.train_dataset[example_idx],
             answered_example=True,
             eos_token=self.tokenizer.eos_token,
