@@ -1,5 +1,7 @@
 BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must be set in MODEL_CONFIGS below.
     "model_path": "TabbyML/SantaCoder-1B",
+    "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+    "include_questions_on_contexts": True,  # Whether to prepend questions on contexts.
     "num_cross_attn_layers": 4,
     "cross_attn_layers_stride": 2,
     "cross_attn_shared_weights": True,
@@ -46,7 +48,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoder": {
-        "model_path": "/mnt/dssk/data/starcoder",
+        "model_path": "/mnt/dssk/data_rw/starcoder",
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 4,
         "cross_attn_shared_weights": True,
@@ -57,7 +59,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoderbase-1b": {
-        "model_path": "/mnt/dssk/data/hf_models/starcoderbase-1b",
+        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-1b",
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 3,
         "cross_attn_shared_weights": True,
@@ -71,7 +73,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoderbase-3b": {
-        "model_path": "/mnt/dssk/data/hf_models/starcoderbase-3b",
+        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-3b",
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -91,7 +93,7 @@ MODEL_CONFIGS = {
         "label_smoothing_factor": 0.0,
     },
     "crossattn_starcoderbase-7b": {
-        "model_path": "/mnt/dssk/data/hf_models/starcoderbase-7b",
+        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-7b",
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 4,
         "cross_attn_shared_weights": True,
@@ -136,6 +138,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b": {
         "model_path": "allenai/tulu-2-dpo-7b",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -162,6 +165,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-13b": {
         "model_path": "allenai/tulu-2-dpo-13b",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -188,6 +192,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_2x8": {  # Ablation case with 2 cross-attn layers and a stride of 8.
         "model_path": "allenai/tulu-2-dpo-7b",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 2,
         "cross_attn_layers_stride": 8,
         "cross_attn_shared_weights": False,
@@ -214,6 +219,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_8x2": {  # Ablation case with 8 cross-attn layers and a stride of 2.
         "model_path": "allenai/tulu-2-dpo-7b",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 2,
         "cross_attn_shared_weights": False,
@@ -240,6 +246,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_8x3": {  # Ablation case with 8 cross-attn layers and a stride of 3.
         "model_path": "allenai/tulu-2-dpo-7b",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 3,
         "cross_attn_shared_weights": False,
