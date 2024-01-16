@@ -4,6 +4,10 @@ from datasets import Dataset
 from dssk.utils.hf_datasets import update_infodict
 
 
+def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
+    return " ".join(d["contexts_list"])
+
+
 def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
@@ -13,9 +17,10 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
+    context = get_single_context_with_trivial_strategy(d)
     return {
         "self_input_str": f"question: {d['question']} \n answer: {answer}",
-        "cross_input_str": f"context: {d['context']}",
+        "cross_input_str": f"context: {context}",
     }
 
 
@@ -26,10 +31,7 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
-    if "context" in d:
-        context = d["context"]
-    else:
-        context = " ".join(c for c in d["contexts_list"])
+    context = get_single_context_with_trivial_strategy(d)
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
@@ -221,6 +223,8 @@ class CleanupQATask:
     def __call__(self, qa_task: Dataset) -> Dataset:
         if self.post_cleanup:
             formatter, dropped = KNOWN_POST_CLEANUPS[self.post_cleanup]
+            # Silently ignore dropping columns that don't exist
+            dropped = set(qa_task.column_names) & set(dropped)
             qa_task = qa_task.map(formatter, remove_columns=dropped)
 
         update_infodict(
