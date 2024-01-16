@@ -64,6 +64,7 @@ class DatasetWithContext(Dataset):
         context_length: int,
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
+        include_questions_on_contexts: bool,
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
         self.train_dataset = train_dataset.with_format("torch")
@@ -77,6 +78,7 @@ class DatasetWithContext(Dataset):
         # In the second time, we return the context tokens to perform causal lm on, and include the context embeddings as well.
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
+        self.include_questions_on_contexts = include_questions_on_contexts
 
     def __len__(self) -> int:
         """Returns the length of the dataset which matches that of the base dataset.
@@ -117,6 +119,7 @@ class DatasetWithContext(Dataset):
         formatted_example = cross_user_assistant_format(
             self.train_dataset[example_idx],
             answered_example=True,
+            eos_token=self.tokenizer.eos_token,
         )
 
         if use_context:
@@ -139,7 +142,10 @@ class DatasetWithContext(Dataset):
             )
 
         # Context ids are used for embedding during training.
-        context_str = formatted_example["cross_input_str"]
+        if self.include_questions_on_contexts:
+            context_str = formatted_example["cross_input_str_with_question"]
+        else:
+            context_str = formatted_example["cross_input_str"]
         context_input_ids = self.tokenizer(
             context_str,
             max_length=self.context_length,
@@ -231,8 +237,10 @@ def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
+    data_subset: str = "all",
     data_cache_dir: str = None,
     include_context_ids: Optional[bool] = False,
+    include_questions_on_contexts: Optional[bool] = True,
 ) -> Union[List[Dataset], Dataset]:
     """Get and pre-process training dataset. This assumes data was previously prepared and context embeddings
     are available in the dataset.
@@ -241,8 +249,10 @@ def data_prep(
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
+        data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
+        include_questions_on_contexts (Optional[bool]): Whether to prepend questions on contexts fed to the encoder.
 
     Returns:
         Union[List[Dataset], Dataset]: Processed datasets.
@@ -256,6 +266,12 @@ def data_prep(
     training_data = data["train"]
     validation_data = data["val"]
 
+    if data_subset.lower() != "all":
+        training_data = training_data.filter(lambda x: x["dataset"] == data_subset.lower())
+        validation_data = validation_data.filter(lambda x: x["dataset"] == data_subset.lower())
+
+    training_data = training_data.shuffle()
+
     tokenizer = get_tokenizer(
         tokenizer_path,
     )
@@ -265,12 +281,14 @@ def data_prep(
         context_length=context_length,
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
+        include_questions_on_contexts=include_questions_on_contexts,
     )
     validation_dataset = DatasetWithContext(
         validation_data,
         context_length=context_length,
         tokenizer=tokenizer,
         include_context_ids=False,
+        include_questions_on_contexts=include_questions_on_contexts,
     )
 
     return training_dataset, validation_dataset
