@@ -25,7 +25,7 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
 
 
 def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
-    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+    """Ancestor of cross_uaf_question_in_context"""
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
@@ -35,6 +35,23 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
+    }
+
+
+def cross_uaf_question_in_context(
+    d: dict[str, Any], answered_example: bool, eos_token: str = ""
+) -> dict[str, Any]:
+    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+    context = get_single_context_with_trivial_strategy(d)
+    return {
+        "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
+        "cross_input_str": f"<|user|>\n<|C|><|assistant|>\n{context}{eos_token}",
+        "cross_input_str_with_question": f"<|user|>\n{d['question']}<|C|><|assistant|>\n{context}{eos_token}",
     }
 
 
@@ -98,6 +115,7 @@ def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
 KNOWN_QA_TASK_FORMATS = {
     "cross_colon": cross_colon_format,
     "cross_uaf": cross_user_assistant_format,
+    "cross_uaf_qic": cross_uaf_question_in_context,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
@@ -203,7 +221,7 @@ KNOWN_POST_CLEANUPS = {
     ),
     "cross": (
         None,
-        {"self_input_str", "cross_input_str", "context"},
+        {"self_input_str", "cross_input_str", "cross_input_str_with_question", "context"},
     ),
     "tulu2": (
         None,

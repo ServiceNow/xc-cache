@@ -324,6 +324,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         cross_attn_hidden_size: Optional[int] = None,
         cross_attn_num_attention_heads: Optional[int] = None,
         randomly_initialize_decoder: Optional[bool] = False,
+        cache_dir: Optional[str] = None,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
@@ -351,7 +352,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         self.base_model_id = model_id
         self.n_decoder_layers = config.n_layer
 
-        self.transformer, self.lm_head = self._make_base_decoder()
+        self.transformer, self.lm_head = self._make_base_decoder(cache_dir)
 
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
@@ -362,10 +363,10 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
             self.init_weights()
 
     def _make_base_decoder(
-        self,
+        self, cache_dir=None
     ) -> tuple[torch.nn.ModuleList, torch.nn.ModuleList]:
         base_decoder = GPTBigCodeForCausalLM.from_pretrained(
-            self.base_model_id,
+            self.base_model_id, cache_dir=cache_dir
         )
         return base_decoder.transformer, base_decoder.lm_head
 

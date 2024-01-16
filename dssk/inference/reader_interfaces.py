@@ -50,6 +50,7 @@ class CrossAttnInterface(AbstractLMInterface):
         model_peft_ckpt: Optional[str] = None,
         ds_config: Optional[str] = None,
         to_device: Optional[str] = None,
+        include_questions_on_contexts: Optional[bool] = True,
         default_gen_args: Optional[dict[str, Any]] = None,
         **kwargs,  # Ignored
     ):
@@ -111,6 +112,8 @@ class CrossAttnInterface(AbstractLMInterface):
                 raise ValueError("Cannot automatically infer model_max_length.")
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
+        self.include_questions_on_contexts = include_questions_on_contexts
+
     @property
     def model_info(self) -> dict[str, Any]:
         # See docstring in AbstractLMInterface.model_info
@@ -137,11 +140,17 @@ class CrossAttnInterface(AbstractLMInterface):
             self.model.device
         )
 
+        # Decide whether to include the question at the start of the context.
+        if self.include_questions_on_contexts:
+            cross_input_key = "cross_input_str_with_question"
+        else:
+            cross_input_key = "cross_input_str"
+
         # Context features to be cross-attended to
-        if "cross_input_str" in sample and sample["cross_input_str"]:
-            if isinstance(sample["cross_input_str"], list):
+        if cross_input_key in sample and sample[cross_input_key]:
+            if isinstance(sample[cross_input_key], list):
                 context_ids_list, encoder_attn_mask_list = [], []
-                for context_str in sample["cross_input_str"]:
+                for context_str in sample[cross_input_key]:
                     context_fts = self.tokenizer(
                         [context_str], return_tensors="pt", truncation=True
                     ).to(self.model.device)

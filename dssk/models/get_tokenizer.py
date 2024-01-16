@@ -21,6 +21,6 @@ def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
 
     pad_token = tokenizer.pad_token
     if pad_token is None:
-        tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
+        tokenizer.add_special_tokens({"pad_token": tokenizer.bos_token})
 
     return tokenizer
