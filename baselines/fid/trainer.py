@@ -38,7 +38,7 @@ class FiDTrainer(Trainer):
 
         self.can_return_loss = True  # key override to log loss
         self.eval_subset = opt.eval_subset
-        self.train_datasets = opt.train_datasets
+        self.train_datasets = opt.train_datasets.split(";")
 
     def log(self, logs: Dict[str, float]):
         """

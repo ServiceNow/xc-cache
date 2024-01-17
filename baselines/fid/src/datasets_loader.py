@@ -8,6 +8,7 @@
 import torch
 import logging
 
+from datasets import Dataset
 from torch.utils.data import RandomSampler, Sampler
 
 from dssk.data.format_qa_task import fid_format
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # new class
 class BatchSampler(Sampler):
-    def __init__(self, data_source, batch_size, dataset_names):
+    def __init__(self, data_source: Dataset, batch_size: int, dataset_names: list[str]):
         """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.
 
         Args:
@@ -26,7 +27,7 @@ class BatchSampler(Sampler):
         """
 
         # hard-coded to avoid iterating through the whole dataset
-        self.dataset_names = dataset_names.split(";")
+        self.dataset_names = tuple(dataset_names)
 
         # a sampler per dataset, Filtering is slow but it's cached
         self.samplers = [
