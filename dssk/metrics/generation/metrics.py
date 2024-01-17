@@ -162,6 +162,7 @@ class Rouge(Metric):
         self._metric = evaluate.load("rouge", rouge_types=self._rouge_types)
 
     def __call__(self, predictions, references, questions=None, ids=None):
+        # The computation code seems robust to both List[str] and List[List[str]] for references
         scores = self._metric.compute(
             predictions=predictions, references=references, use_aggregator=False
         )
@@ -180,6 +181,7 @@ class Bleu(Metric):
         self._metric = evaluate.load("bleu")
 
     def __call__(self, predictions, references, questions=None, ids=None):
+        # The computation code seems robust to both List[str] and List[List[str]] for references
         scores = []
         for i in range(len(predictions)):
             if predictions[i] == "":
@@ -224,6 +226,8 @@ class F1(Metric):
         """Computes F1 score between a prediction and a list of references.
         Take the max F1 score if there are multiple references.
         """
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
 
         f1_scores = [self._f1_score(prediction, reference) for reference in references]
         return max(f1_scores)
@@ -273,6 +277,8 @@ class EM(Metric):
         """Computes exact match score between a prediction and a list of
         references. Take the max EM score if there are multiple references.
         """
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
 
         em_scores = [self._exact_match_score(prediction, reference) for reference in references]
         return max(em_scores)
@@ -310,6 +316,8 @@ class Recall(Metric):
         Computes recall score between a prediction and a list of references.
         Take the max recall score if there are multiple references.
         """
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
 
         recall_scores = [self._recall_score(prediction, reference) for reference in references]
         return max(recall_scores)
@@ -360,6 +368,8 @@ class Precision(Metric):
         Computes precision score between a prediction and a list of references.
         Take the max precision score if there are multiple references.
         """
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
 
         precision_scores = [
             self._precision_score(prediction, reference) for reference in references
@@ -405,6 +415,8 @@ class RecallEM(Metric):
         Computes recall score between a prediction and a list of references.
         Take the max recall score if there are multiple references.
         """
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
 
         recallem_scores = [self._recallem_score(prediction, reference) for reference in references]
         return max(recallem_scores)
@@ -481,6 +493,9 @@ class LLMEval(Metric):
         return result
 
     def _llm_score(self, prediction, references, question, id_):
+        assert isinstance(prediction, str), "prediction should be a str"
+        assert isinstance(references, list), "references should be a list of str"
+
         llm_scores = [
             self._llm_score_single(prediction, reference, question) for reference in references
         ]
