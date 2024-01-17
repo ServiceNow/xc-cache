@@ -390,6 +390,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         cross_attn_num_key_value_heads: Optional[int] = None,
         randomly_initialize_decoder: Optional[bool] = False,
         cross_attn_attention_bias: Optional[bool] = False,
+        cache_dir: Optional[str] = None,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
@@ -421,7 +422,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         self.base_model_id = model_id
         self.n_decoder_layers = config.num_hidden_layers
 
-        self.transformer, self.lm_head = self._make_base_decoder()
+        self.transformer, self.lm_head = self._make_base_decoder(cache_dir)
 
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
@@ -434,11 +435,9 @@ class CrossAttnLlama(LlamaForCausalLM):
         delattr(self, "model")
 
     def _make_base_decoder(
-        self,
+        self, cache_dir=None
     ) -> tuple[torch.nn.ModuleList, torch.nn.ModuleList]:
-        base_decoder = LlamaForCausalLM.from_pretrained(
-            self.base_model_id,
-        )
+        base_decoder = LlamaForCausalLM.from_pretrained(self.base_model_id, cache_dir=cache_dir)
         return base_decoder.model, base_decoder.lm_head
 
     def _make_cross_attn_layers(

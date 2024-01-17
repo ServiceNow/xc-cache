@@ -4,6 +4,10 @@ from datasets import Dataset
 from dssk.utils.hf_datasets import update_infodict
 
 
+def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
+    return " ".join(d["contexts_list"])
+
+
 def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
@@ -13,14 +17,31 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> d
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
+    context = get_single_context_with_trivial_strategy(d)
     return {
         "self_input_str": f"question: {d['question']} \n answer: {answer}",
-        "cross_input_str": f"context: {d['context']}",
+        "cross_input_str": f"context: {context}",
     }
 
 
 def cross_user_assistant_format(
     d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    """Ancestor of cross_uaf_question_in_context"""
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+    context = get_single_context_with_trivial_strategy(d)
+    return {
+        "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
+        "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
+    }
+
+
+def cross_uaf_question_in_context(
+    d: dict[str, Any], answered_example: bool, eos_token: str = "", **kwargs
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
     answer = d.get("answer", "")
@@ -28,9 +49,11 @@ def cross_user_assistant_format(
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
+    context = get_single_context_with_trivial_strategy(d)
     return {
-        "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
-        "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{d['context']}",
+        "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
+        "cross_input_str": f"<|user|>\n<|C|><|assistant|>\n{context}{eos_token}",
+        "cross_input_str_with_question": f"<|user|>\n{d['question']}<|C|><|assistant|>\n{context}{eos_token}",
     }
 
 
@@ -50,7 +73,9 @@ def system_user_assistant_prompt_format(
     return {"input_str": input_str}
 
 
-def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
+def tulu2_prompt_format(
+    d: dict[str, Any], answered_example: bool, include_context: bool = True, **kwargs
+) -> dict[str, Any]:
     """Native format of tulu v2 models (NOT for cross-attending models!)
 
     Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
@@ -60,11 +85,16 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> 
         assert answer  # Both None and "" are illegal.
     # Using just a space as the separator
     combined_context = " ".join(context_text for context_text in d["contexts_list"])
-    prefix = f"<|system|>\n{combined_context}\n" if combined_context else ""
+    prefix = f"<|system|>\n{combined_context}\n" if (combined_context and include_context) else ""
     input_str = f"{prefix}<|user|>\n{d['question']}\n<|assistant|>\n"
     if answered_example:
         input_str = f"{input_str}{answer}"
     return {"input_str": input_str}
+
+
+def tulu2_prompt_format_no_context(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+    """Same as tulu2_prompt_format, but without including the context in the prompt."""
+    return tulu2_prompt_format(d, answered_example=answered_example, include_context=False)
 
 
 def fid_format(
@@ -95,8 +125,10 @@ def fid_format(
 KNOWN_QA_TASK_FORMATS = {
     "cross_colon": cross_colon_format,
     "cross_uaf": cross_user_assistant_format,
+    "cross_uaf_qic": cross_uaf_question_in_context,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
+    "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "fid": fid_format,
 }
 
@@ -206,7 +238,11 @@ KNOWN_POST_CLEANUPS = {
     ),
     "cross": (
         None,
-        {"self_input_str", "cross_input_str", "context"},
+        {"self_input_str", "cross_input_str", "cross_input_str_with_question", "context"},
+    ),
+    "tulu2": (
+        None,
+        {"input_str", "context"},
     ),
     "fid": (
         None,
@@ -222,6 +258,8 @@ class CleanupQATask:
     def __call__(self, qa_task: Dataset) -> Dataset:
         if self.post_cleanup:
             formatter, dropped = KNOWN_POST_CLEANUPS[self.post_cleanup]
+            # Silently ignore dropping columns that don't exist
+            dropped = set(qa_task.column_names) & set(dropped)
             qa_task = qa_task.map(formatter, remove_columns=dropped)
 
         update_infodict(
