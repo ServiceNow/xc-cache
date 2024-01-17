@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # new class
 class BatchSampler(Sampler):
-    def __init__(self, data_source, batch_size):
+    def __init__(self, data_source, batch_size, dataset_names):
         """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.
 
         Args:
@@ -26,7 +26,7 @@ class BatchSampler(Sampler):
         """
 
         # hard-coded to avoid iterating through the whole dataset
-        self.dataset_names = ["msmarco", "nq", "topiocqa", "hotpotqa", "squad_v2"]
+        self.dataset_names = dataset_names.split(";")
 
         # a sampler per dataset, Filtering is slow but it's cached
         self.samplers = [

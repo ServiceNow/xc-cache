@@ -8,7 +8,7 @@ def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
     return " ".join(d["contexts_list"])
 
 
-def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
     """
@@ -24,7 +24,9 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool) -> dict[str, A
     }
 
 
-def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def cross_user_assistant_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
     """Ancestor of cross_uaf_question_in_context"""
     answer = d.get("answer", "")
     if answered_example:
@@ -39,7 +41,7 @@ def cross_user_assistant_format(d: dict[str, Any], answered_example: bool) -> di
 
 
 def cross_uaf_question_in_context(
-    d: dict[str, Any], answered_example: bool, eos_token: str = ""
+    d: dict[str, Any], answered_example: bool, eos_token: str = "", **kwargs
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
     answer = d.get("answer", "")
@@ -56,7 +58,7 @@ def cross_uaf_question_in_context(
 
 
 def system_user_assistant_prompt_format(
-    d: dict[str, Any], answered_example: bool
+    d: dict[str, Any], answered_example: bool, **kwargs
 ) -> dict[str, Any]:
     answer = d.get("answer", "")
     if answered_example:
@@ -72,7 +74,7 @@ def system_user_assistant_prompt_format(
 
 
 def tulu2_prompt_format(
-    d: dict[str, Any], answered_example: bool, include_context: bool = True
+    d: dict[str, Any], answered_example: bool, include_context: bool = True, **kwargs
 ) -> dict[str, Any]:
     """Native format of tulu v2 models (NOT for cross-attending models!)
 
@@ -95,15 +97,23 @@ def tulu2_prompt_format_no_context(d: dict[str, Any], answered_example: bool) ->
     return tulu2_prompt_format(d, answered_example=answered_example, include_context=False)
 
 
-def fid_format(d: dict[str, Any], answered_example: bool) -> dict[str, Any]:
+def fid_format(
+    d: dict[str, Any], answered_example: bool, include_title: bool, include_context: bool, **kwargs
+) -> dict[str, Any]:
     if answered_example:
         raise NotImplementedError(
             "Answered examples (typically for training) are not implemented yet."
         )
 
-    if d["contexts_list"]:
+    if include_context and d["contexts_list"]:
+        if include_title:
+            template = "question: {question} title: {title} context: {context}"
+        else:
+            # keeping the title tag, as tested models are trained with it
+            template = "question: {question} title: context: {context}"
+
         passages = [
-            f"question: {d['question']} title: {title} context: {context}"
+            template.format(question=d["question"], title=title, context=context)
             for context, title in zip(d["contexts_list"], d["titles_list"])
         ]
     else:
@@ -128,6 +138,8 @@ def format_qa_task(
     *,
     task_format: Optional[str] = None,
     answered_example: bool = False,
+    include_title: bool = False,
+    include_context: bool = True,
     **kwargs,
 ) -> Dataset:
     """Format a question answering task with a specific model in mind
@@ -165,7 +177,12 @@ def format_qa_task(
     """
     if task_format:
         qa_task = qa_task.map(
-            KNOWN_QA_TASK_FORMATS[task_format], fn_kwargs={"answered_example": answered_example}
+            KNOWN_QA_TASK_FORMATS[task_format],
+            fn_kwargs={
+                "answered_example": answered_example,
+                "include_title": include_title,
+                "include_context": include_context,
+            },
         )
 
     update_infodict(
