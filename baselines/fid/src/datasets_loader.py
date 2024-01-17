@@ -6,143 +6,152 @@
 # LICENSE-CC-BY-NC-4.0 file in baselines/fid/.
 
 import torch
-import random
-import json
+import logging
+
+from torch.utils.data import RandomSampler, Sampler
+
+from dssk.data.utils.pre_processors import PosContextPreProcessor
+
+logger = logging.getLogger(__name__)
 
 
-class Dataset(torch.utils.data.Dataset):
-    def __init__(
-        self,
-        data,
-        n_context=None,
-        question_prefix="question:",
-        title_prefix="title:",
-        passage_prefix="context:",
-    ):
-        self.data = data
-        self.n_context = n_context
-        self.question_prefix = question_prefix
-        self.title_prefix = title_prefix
-        self.passage_prefix = passage_prefix
-        self.sort_data()
+# new class
+class BatchSampler(Sampler):
+    def __init__(self, data_source, batch_size):
+        """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.
+
+        Args:
+            data_source (datasets.Dataset): aggregated dataset
+            batch_size (int): number of sampler per a batch
+        """
+
+        # hard-coded to avoid iterating through the whole dataset
+        self.dataset_names = ["msmarco", "nq", "topiocqa", "hotpotqa", "squad_v2"]
+
+        # a sampler per dataset, Filtering is slow but it's cached
+        self.samplers = [
+            RandomSampler(data_source.filter(lambda example: example["dataset"] == name))
+            for name in self.dataset_names
+        ]
+        self.batch_size = batch_size
+        self.data_source = data_source
+
+    def __iter__(self):
+        """Sequentially iterates over the samplers yielding a batch of data exclusively from one dataset
+
+        Yields:
+            dict: one sample at a time
+        """
+
+        # list of counters of sampled data by sampler to keep track of when they are exhausted
+        remaining = [len(sampler) for sampler in self.samplers]
+
+        # extra security: the dataloader that calls this batchsampler should stop after sampling self.__len__() data
+        while all([r >= self.batch_size for r in remaining]):
+            # sequentially sample from each dataset
+            for i, sampler in enumerate(self.samplers):
+                # skip sampler if it doe not have enough data for a full batch
+                if remaining[i] >= self.batch_size:
+                    # change sampler when a full batch has been sampled
+                    for _ in range(self.batch_size):
+                        remaining[i] -= 1
+                        yield next(sampler.__iter__())
 
     def __len__(self):
-        return len(self.data)
+        """Accounts for data that is dropped by each sampler as it cannot form a full batch
 
-    def get_target(self, example):
-        if "target" in example:
-            target = example["target"]
-            return target + " </s>"
-        elif "answers" in example:
-            return random.choice(example["answers"]) + " </s>"
-        else:
-            return None
+        Returns:
+            int: number of sampled data
+        """
 
-    def __getitem__(self, index):
-        example = self.data[index]
-        question = self.question_prefix + " " + example["question"]
-        target = self.get_target(example)
-
-        if "ctxs" in example and self.n_context is not None:
-            f = self.title_prefix + " {} " + self.passage_prefix + " {}"
-            contexts = example["ctxs"][: self.n_context]
-            passages = [f.format(c["title"], c["text"]) for c in contexts]
-            scores = [float(c["score"]) for c in contexts]
-            scores = torch.tensor(scores)
-
-            if len(contexts) == 0:
-                contexts = [question]
-        else:
-            passages, scores = None, None
-
-        return {
-            "index": index,
-            "question": question,
-            "target": target,
-            "passages": passages,
-            "scores": scores,
-        }
-
-    def sort_data(self):
-        if self.n_context is None or "score" not in self.data[0]["ctxs"][0]:
-            return
-        for ex in self.data:
-            ex["ctxs"].sort(key=lambda x: float(x["score"]), reverse=True)
-
-    def get_example(self, index):
-        return self.data[index]
+        return self.batch_size * sum(
+            [len(sampler) // self.batch_size for sampler in self.samplers]
+        )
 
 
-def encode_passages(batch_text_passages, tokenizer):
+def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
     passage_ids, passage_masks = [], []
-    for k, text_passages in enumerate(batch_text_passages):
+
+    max_n_contexts = 0
+    max_n_tokens = 0
+    for text_passages in batch_text_passages:
         p = tokenizer.batch_encode_plus(
             text_passages,
-            padding="max_length",
+            max_length=text_maxlength,
+            padding=True,
             return_tensors="pt",
-            truncation=True,
+            truncation=text_maxlength is not None,
         )
-        passage_ids.append(p["input_ids"][None])
-        passage_masks.append(p["attention_mask"][None])
+        passage_ids.append(p["input_ids"])
+        passage_masks.append(p["attention_mask"])
+        # keep track of maximal number of tokens and of contexts
+        max_n_contexts = max(max_n_contexts, len(text_passages))
+        max_n_tokens = max(max_n_tokens, p["attention_mask"].shape[1])
 
-    passage_ids = torch.cat(passage_ids, dim=0)
-    passage_masks = torch.cat(passage_masks, dim=0)
+    # number of contexts may vary within a batch. Need to pad that dimension
+    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0)
+    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0)
+
+    # log statistics
+    logger.debug(
+        f"batch's maximal number of tokens: {max_n_tokens} and of contexts {max_n_contexts}"
+    )
+
     return passage_ids, passage_masks.bool()
 
 
 class Collator(object):
-    def __init__(self, text_maxlength, tokenizer, answer_maxlength=20):
+    def __init__(self, text_maxlength, tokenizer, answer_maxlength=20, max_contexts=10):
         self.tokenizer = tokenizer
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
+        self.max_contexts = max_contexts
 
-    def __call__(self, batch):
-        assert batch[0]["target"] is not None
-        index = torch.tensor([ex["index"] for ex in batch])
-        target = [ex["target"] for ex in batch]
+    def _format_input(self, example):
+        n_contexts = len(example["contexts_list"])
+
+        if n_contexts < 1:  # no contexts provided
+            passages = [f"question: {example['question']}"]
+
+        elif n_contexts == 1:  # only one gold context provided
+            passages = [
+                f"question: {example['question']} title: {example['titles_list'][0]} context: {example['contexts_list'][0]}"
+            ]
+
+        else:
+            # select all gold and some distractors (for a total of up to max_contexts), and shuffle them to be robust to order variations
+            ctx_index = PosContextPreProcessor.truncate_true_list(
+                list(range(n_contexts)), example["useful_contexts"], max_items=self.max_contexts
+            )
+
+            passages = [
+                f"question: {example['question']} title: {example['titles_list'][i]} context: {example['contexts_list'][i]}"
+                for i in ctx_index
+            ]
+
+        return passages
+
+    def __call__(self, batch_list):
+        target = [example.get("answer", None) for example in batch_list]
         target = self.tokenizer.batch_encode_plus(
             target,
             max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
-            pad_to_max_length=True,
+            padding=True,
             return_tensors="pt",
-            truncation=True if self.answer_maxlength > 0 else False,
+            truncation=self.answer_maxlength > 0,
         )
         target_ids = target["input_ids"]
-        target_mask = target["attention_mask"].bool()
-        target_ids = target_ids.masked_fill(~target_mask, -100)
+        target_ids = target_ids.masked_fill(
+            ~target["attention_mask"].bool(), -100
+        )  # padding tokens are ignored when computing the loss
 
-        def append_question(example):
-            if example["passages"] is None:
-                return [example["question"]]
-            return [example["question"] + " " + t for t in example["passages"]]
+        text_passages = [self._format_input(example) for example in batch_list]
+        passage_ids, passage_masks = encode_passages(
+            text_passages, self.tokenizer, self.text_maxlength
+        )
 
-        text_passages = [append_question(example) for example in batch]
-        passage_ids, passage_masks = encode_passages(text_passages, self.tokenizer)
-
-        return (index, target_ids, target_mask, passage_ids, passage_masks)
-
-
-def load_data(data_path=None, global_rank=-1, world_size=-1):
-    assert data_path
-    if data_path.endswith(".jsonl"):
-        data = open(data_path, "r")
-    elif data_path.endswith(".json"):
-        with open(data_path, "r") as fin:
-            data = json.load(fin)
-    examples = []
-    for k, example in enumerate(data):
-        if global_rank > -1 and not k % world_size == global_rank:
-            continue
-        if data_path is not None and data_path.endswith(".jsonl"):
-            example = json.loads(example)
-        if "id" not in example:
-            example["id"] = k
-        for c in example["ctxs"]:
-            if "score" not in c:
-                c["score"] = 1.0 / (k + 1)
-        examples.append(example)
-
-    if data_path is not None and data_path.endswith(".jsonl"):
-        data.close()
-
-    return examples
+        return {
+            "labels": target_ids,
+            "input_ids": passage_ids,
+            "attention_mask": passage_masks,
+        }
