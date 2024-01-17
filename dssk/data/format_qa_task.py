@@ -2,6 +2,7 @@ from typing import Any, Optional, Sequence
 from datasets import Dataset
 
 from dssk.utils.hf_datasets import update_infodict
+from dssk.data.utils.pre_processors import PosContextPreProcessor
 
 
 def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
@@ -158,28 +159,45 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> 
 
 
 def fid_format(
-    d: dict[str, Any], answered_example: bool, include_title: bool, include_context: bool, **kwargs
+    d: dict[str, Any],
+    answered_example: bool,
+    include_title: bool,
+    include_context: bool,
+    max_contexts_training: Optional[int] = None,
+    **kwargs,
 ) -> dict[str, Any]:
-    if answered_example:
-        raise NotImplementedError(
-            "Answered examples (typically for training) are not implemented yet."
-        )
-
-    if include_context and d["contexts_list"]:
+    # Get the passages
+    if include_context:
+        assert d["contexts_list"]
         if include_title:
             template = "question: {question} title: {title} context: {context}"
         else:
             # keeping the title tag, as tested models are trained with it
             template = "question: {question} title: context: {context}"
-
+        # All the passages for all the contexts
         passages = [
             template.format(question=d["question"], title=title, context=context)
-            for context, title in zip(d["contexts_list"], d["titles_list"])
+            for title, context in zip(d["titles_list"], d["contexts_list"])
         ]
+        # In training, we may want a shorter list (guaranteed to have gold)
+        if max_contexts_training is not None:
+            assert (
+                answered_example
+            ), "False answered_example indicates inference, but max_contexts_training (intended for training) is provided. The context-selection mechanism uses useful_contexts to keep the gold contexts. That would be 'cheating' at inference: you should implement something that gets random contexts instead."
+            passages = PosContextPreProcessor.truncate_true_list(
+                passages, d["useful_contexts"], max_items=max_contexts_training
+            )
     else:
+        # No context: single passage that is basically the question.
         passages = [f"question: {d['question']}"]
 
-    return {"passages": passages}
+    # Return our passages, with the answer or not
+    if answered_example:
+        answer = d.get("answer", "")
+        assert answer  # Both None and "" are illegal.
+        return {"passages": passages, "target": answer}
+    else:
+        return {"passages": passages}
 
 
 KNOWN_QA_TASK_FORMATS = {
