@@ -45,7 +45,11 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     model_name = "t5-" + opt.model_size
     # maximal number of tokens for T5 is 512
     text_maxlentgh = min(opt.text_maxlength, 512)
-    checkpoint_path = Path(opt.name) / model_name
+    if opt.savedir_base:
+        base_path = Path(opt.savedir_base) / opt.name
+    else:
+        base_path = Path(opt.name)
+    checkpoint_path = base_path / model_name
     checkpoint_path.mkdir(parents=True, exist_ok=True)
 
     model = FiDT5.from_pretrained(model_name)
