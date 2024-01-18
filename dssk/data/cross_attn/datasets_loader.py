@@ -30,7 +30,7 @@ def apply_fim_transform(
     boundaries = list(
         np.random.randint(
             low=skip_start_n_tokens,
-            high=min(max_length, input_tokens.shape[0]) - new_tokens_length,
+            high=min(max_length - new_tokens_length, input_tokens.shape[0]),
             size=2,
         )
     )
