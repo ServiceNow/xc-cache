@@ -24,13 +24,14 @@ def apply_fim_transform(
 
     new_tokens_length = len(suffix_token_id) + len(prefix_token_id) + len(middle_token_id)
 
+    assert skip_start_n_tokens > 0
     assert len(input_tokens) > skip_start_n_tokens + new_tokens_length
     assert max_length > skip_start_n_tokens + new_tokens_length
 
     boundaries = list(
         np.random.randint(
             low=skip_start_n_tokens,
-            high=min(max_length - new_tokens_length, input_tokens.shape[0]),
+            high=min(max_length - new_tokens_length - 1, input_tokens.shape[0] - 1),
             size=2,
         )
     )
