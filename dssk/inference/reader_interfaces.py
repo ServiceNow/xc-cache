@@ -171,7 +171,7 @@ class CrossAttnInterface(AbstractLMInterface):
                 }
 
         # pad_token_id is a valid kwargs for StarCoder, but it may not work for other models
-        output = self.model.generate(**features, pad_token_id=self.tokenizer.eos_token_id, **args)
+        output = self.model.generate(**features, pad_token_id=self.tokenizer.bos_token_id, **args)
 
         num_input_tokens = len(features["input_ids"][0])
         try:

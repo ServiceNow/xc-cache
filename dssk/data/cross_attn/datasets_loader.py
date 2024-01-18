@@ -13,18 +13,27 @@ from dssk.data.format_qa_task import cross_uaf_question_in_context
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
 def apply_fim_transform(
     input_tokens: List[int],
-    suffix_token_id: int,
-    prefix_token_id: int,
-    middle_token_id: int,
+    suffix_token_id: List[int],
+    prefix_token_id: List[int],
+    middle_token_id: List[int],
     max_length: int,
     skip_start_n_tokens: int = 4,
+    fim_spm_rate: float = 0.5,
 ) -> List[int]:
-    assert len(input_tokens) > skip_start_n_tokens
-
     input_tokens = np.array(input_tokens)
 
+    new_tokens_length = len(suffix_token_id) + len(prefix_token_id) + len(middle_token_id)
+
+    assert skip_start_n_tokens > 0
+    assert len(input_tokens) > skip_start_n_tokens + new_tokens_length
+    assert max_length > skip_start_n_tokens + new_tokens_length
+
     boundaries = list(
-        np.random.randint(low=skip_start_n_tokens, high=input_tokens.shape[0] - 2, size=2)
+        np.random.randint(
+            low=skip_start_n_tokens,
+            high=min(max_length - new_tokens_length - 1, input_tokens.shape[0] - 1),
+            size=2,
+        )
     )
     boundaries.sort()
 
@@ -32,26 +41,26 @@ def apply_fim_transform(
     middle = input_tokens[boundaries[0] : boundaries[1]]
     suffix = input_tokens[boundaries[1] :]
 
-    suffix = np.concatenate([np.array([suffix_token_id]), suffix])
-    prefix = np.concatenate([np.array([prefix_token_id]), prefix])
-    middle = np.concatenate([np.array([middle_token_id]), middle])
+    new_length = suffix.shape[0] + prefix.shape[0] + middle.shape[0] + new_tokens_length
 
-    new_length = suffix.shape[0] + prefix.shape[0] + middle.shape[0]
     diff = new_length - max_length
 
     if diff > 0:  # too long
-        if suffix.shape[0] <= diff:
-            # if there's no space to truncate the suffix: stop and report it. atm i should have stopped this from happening
-            return input_tokens
         suffix = suffix[: suffix.shape[0] - diff]
 
-    input_tokens = np.concatenate(
-        [
-            suffix,
-            prefix,
-            middle,
-        ]
-    ).tolist()
+    # We repeat what was done for starcoder:
+    # https://github.com/bigcode-project/Megatron-LM/blob/bd0aaba3492b441d7f186bb1159fc21e1dcd7a72/megatron/data/gpt_dataset.py#L729-L741
+    # I.e. we flip a fair coin to decide the ordering.
+    if np.random.binomial(1, fim_spm_rate):
+        # SPM (variant 2 from FIM paper)
+        input_tokens = np.concatenate(
+            [prefix_token_id, suffix_token_id, suffix, middle_token_id, prefix, middle]
+        ).tolist()
+    else:
+        # PSM
+        input_tokens = np.concatenate(
+            [prefix_token_id, prefix, suffix_token_id, suffix, middle_token_id, middle]
+        ).tolist()
 
     return input_tokens
 
@@ -71,9 +80,12 @@ class DatasetWithContext(Dataset):
         self.train_dataset = train_dataset.with_format("torch")
         self.context_length = context_length
         self.tokenizer = tokenizer
-        self.fim_prefix_token_id = self.tokenizer.encode("<fim_prefix>")[0]
-        self.fim_middle_token_id = self.tokenizer.encode("<fim_middle>")[0]
-        self.fim_suffix_token_id = self.tokenizer.encode("<fim_suffix>")[0]
+
+        # NOTE: Some of our models were released without FIM ids.
+        # We use a sequence of tokens
+        self.fim_prefix_token_ids = self.tokenizer.encode("<fim_prefix>", add_special_tokens=False)
+        self.fim_middle_token_ids = self.tokenizer.encode("<fim_middle>", add_special_tokens=False)
+        self.fim_suffix_token_ids = self.tokenizer.encode("<fim_suffix>", add_special_tokens=False)
         # Setting include_context_ids will make it so that we iterate over the dataset twice.
         # In the first time, we do the usual return question/answer pairs along with the context embeddings.
         # In the second time, we return the context tokens to perform causal lm on, and include the context embeddings as well.
@@ -137,9 +149,9 @@ class DatasetWithContext(Dataset):
         if do_fim_transform:
             input_ids = apply_fim_transform(
                 input_ids,
-                self.fim_prefix_token_id,
-                self.fim_middle_token_id,
-                self.fim_suffix_token_id,
+                self.fim_prefix_token_ids,
+                self.fim_middle_token_ids,
+                self.fim_suffix_token_ids,
                 max_length=self.context_length,
             )
 
@@ -154,7 +166,7 @@ class DatasetWithContext(Dataset):
             truncation=True,
         )["input_ids"]
 
-        return {
+        processed_item = {
             "input_ids": input_ids,
             "context_input_ids": context_input_ids,
             "input_str": input_str,
@@ -162,10 +174,12 @@ class DatasetWithContext(Dataset):
             "do_fim_transform": do_fim_transform,
         }
 
+        return processed_item
+
 
 class Collator:
     """Collator object mapping sequences of items from dataset instance
-    into batches of Encoder outputs, decoder input ids and masks.
+    into batches of Encoder tokens, decoder tokens and masks.
     """
 
     def __init__(
@@ -186,14 +200,12 @@ class Collator:
 
     def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Maps list of triplets of examples to batches of token ids, masks, and labels used for training.
-        The first two elements in a triplet correspond to neighbor chunks from the same file. The third
-        element corresponds to a chunk from a random file.
 
         Args:
             batch (List[Dict]): List of pairs of examples.
 
         Returns:
-            Dict[str, torch.Tensor]: Batches of decoder input tokens, encoder hidden states, and padding masks.
+            Dict[str, torch.Tensor]: Batches of decoder input tokens, encoder input tokens, and padding masks.
         """
 
         input_ids_list = [el["input_ids"] for el in batch]
