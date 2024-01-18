@@ -20,12 +20,19 @@ def apply_fim_transform(
     skip_start_n_tokens: int = 4,
     fim_spm_rate: float = 0.5,
 ) -> List[int]:
-    assert len(input_tokens) > skip_start_n_tokens
-
     input_tokens = np.array(input_tokens)
 
+    new_tokens_length = len(suffix_token_id) + len(prefix_token_id) + len(middle_token_id)
+
+    assert len(input_tokens) > skip_start_n_tokens + new_tokens_length
+    assert max_length > skip_start_n_tokens + new_tokens_length
+
     boundaries = list(
-        np.random.randint(low=skip_start_n_tokens, high=input_tokens.shape[0] - 2, size=2)
+        np.random.randint(
+            low=skip_start_n_tokens,
+            high=min(max_length, input_tokens.shape[0]) - new_tokens_length,
+            size=2,
+        )
     )
     boundaries.sort()
 
@@ -33,20 +40,11 @@ def apply_fim_transform(
     middle = input_tokens[boundaries[0] : boundaries[1]]
     suffix = input_tokens[boundaries[1] :]
 
-    new_length = (
-        suffix.shape[0]
-        + prefix.shape[0]
-        + middle.shape[0]
-        + len(suffix_token_id)
-        + len(prefix_token_id)
-        + len(middle_token_id)
-    )
+    new_length = suffix.shape[0] + prefix.shape[0] + middle.shape[0] + new_tokens_length
+
     diff = new_length - max_length
 
     if diff > 0:  # too long
-        if suffix.shape[0] <= diff:
-            # if there's no space to truncate the suffix: stop and report it. atm i should have stopped this from happening
-            return input_tokens
         suffix = suffix[: suffix.shape[0] - diff]
 
     # We repeat what was done for starcoder:
