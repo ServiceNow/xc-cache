@@ -56,6 +56,52 @@ def cross_uaf_question_in_context(
     }
 
 
+def tok_cut_cat_detok(tokenizer, first_prefix, other_prefix, contexts, eos_token) -> str:
+    passages = [
+        (first_prefix if i == 0 else other_prefix) + context for i, context in enumerate(contexts)
+    ]
+    # We drop the start-of-sequence tokens.
+    toked_passages = [tokenizer(passage)["input_ids"][1:] for passage in passages]
+    # Figure out truncation (simple strategy, all equal length)
+    safety = 4  # ¯\_(ツ)_/¯
+    max_length = (tokenizer.model_max_length - safety) // len(toked_passages)
+    tokens = [tok for toked_passage in toked_passages for tok in toked_passage[:max_length]]
+    return tokenizer.decode(tokens) + eos_token
+
+
+def cross_uaf_cut_then_cat(
+    d: dict[str, Any], answered_example: bool, *, tokenizer, eos_token: str = "", **kwargs
+) -> dict[str, Any]:
+    """Cross <|user|> <|assistant|> format, truncate before concatenation.
+
+    Hacky, just to try inference.
+    """
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+    cross_input_str = tok_cut_cat_detok(
+        tokenizer=tokenizer,
+        first_prefix="<|user|>\n<|C|><|assistant|>\n",
+        other_prefix=" ",
+        contexts=d["contexts_list"],
+        eos_token=eos_token,
+    )
+    cross_input_str_with_question = tok_cut_cat_detok(
+        tokenizer=tokenizer,
+        first_prefix=f"<|user|>\n{d['question']}<|C|><|assistant|>\n",
+        other_prefix=" ",
+        contexts=d["contexts_list"],
+        eos_token=eos_token,
+    )
+    return {
+        "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
+        "cross_input_str": cross_input_str,
+        "cross_input_str_with_question": cross_input_str_with_question,
+    }
+
+
 def system_user_assistant_prompt_format(
     d: dict[str, Any], answered_example: bool, **kwargs
 ) -> dict[str, Any]:
@@ -118,6 +164,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_colon": cross_colon_format,
     "cross_uaf": cross_user_assistant_format,
     "cross_uaf_qic": cross_uaf_question_in_context,
+    "cross_uaf_cut_then_cat": cross_uaf_cut_then_cat,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
@@ -128,6 +175,7 @@ KNOWN_QA_TASK_FORMATS = {
 def format_qa_task(
     qa_task: Dataset,
     *,
+    tokenizer=None,
     task_format: Optional[str] = None,
     answered_example: bool = False,
     include_title: bool = False,
@@ -174,7 +222,9 @@ def format_qa_task(
                 "answered_example": answered_example,
                 "include_title": include_title,
                 "include_context": include_context,
+                "tokenizer": tokenizer,
             },
+            load_from_cache_file=False,
         )
 
     update_infodict(
