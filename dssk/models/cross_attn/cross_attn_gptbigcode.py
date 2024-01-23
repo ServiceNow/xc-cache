@@ -325,6 +325,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         cross_attn_num_attention_heads: Optional[int] = None,
         randomly_initialize_decoder: Optional[bool] = False,
         cache_dir: Optional[str] = None,
+        max_len: Optional[int] = -1,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
@@ -346,6 +347,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 "cross_attn_hidden_size": cross_attn_hidden_size,
                 "cross_attn_num_attention_heads": cross_attn_num_attention_heads,
                 "cross_attn_shared_projections": cross_attn_shared_projections,
+                "max_len": max_len,
             }
         )
 
