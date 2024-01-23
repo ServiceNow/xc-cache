@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 from datasets import Dataset
 
 from dssk.utils.hf_datasets import update_infodict
@@ -57,21 +57,42 @@ def cross_uaf_question_in_context(
     }
 
 
-def tok_cut_cat_detok(tokenizer, first_prefix, other_prefix, contexts, eos_token) -> str:
+def tok_cut_cat_detok(
+    tokenizer,
+    first_prefix: str,
+    other_prefix: str,
+    contexts: Sequence[str],
+    eos_token: str,
+    max_length: int,
+) -> str:
     passages = [
         (first_prefix if i == 0 else other_prefix) + context for i, context in enumerate(contexts)
     ]
     # We drop the start-of-sequence tokens.
     toked_passages = [tokenizer(passage)["input_ids"][1:] for passage in passages]
     # Figure out truncation (simple strategy, all equal length)
-    safety = 4  # ¯\_(ツ)_/¯
-    max_length = (tokenizer.model_max_length - safety) // len(toked_passages)
-    tokens = [tok for toked_passage in toked_passages for tok in toked_passage[:max_length]]
+    # The following pertains to the `safety` value below.
+    #   - Suppose we tokenize the passages, truncate them, and concatenate to get a total of N tokens.
+    #   - Detokenizing this to string (plus eos) gives the desired str output.
+    #   - But if we were to re-tokenize that str, we are not guaranteed to get exactly N tokens back.
+    #   - Such "boundary effects" are likely to be minor though.
+    #   - Instead of figuring out proper guarantees, we use an arbitrary safety margin.
+    safety = 4  # This value is completely arbitrary!  ¯\_(ツ)_/¯
+    per_passage_max_length = (max_length - safety) // len(toked_passages)
+    tokens = [
+        tok for toked_passage in toked_passages for tok in toked_passage[:per_passage_max_length]
+    ]
     return tokenizer.decode(tokens) + eos_token
 
 
 def cross_uaf_cut_then_cat(
-    d: dict[str, Any], answered_example: bool, *, tokenizer, eos_token: str = "", **kwargs
+    d: dict[str, Any],
+    answered_example: bool,
+    *,
+    tokenizer,
+    max_length: int,
+    eos_token: str = "",
+    **kwargs,
 ) -> dict[str, Any]:
     """Cross <|user|> <|assistant|> format, truncate before concatenation.
 
@@ -95,6 +116,7 @@ def cross_uaf_cut_then_cat(
         other_prefix=" ",
         contexts=d["contexts_list"],
         eos_token=eos_token,
+        max_length=max_length,
     )
     return {
         "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
@@ -183,6 +205,7 @@ KNOWN_QA_TASK_FORMATS = {
 def format_qa_task(
     qa_task: Dataset,
     *,
+    max_length,
     tokenizer=None,
     task_format: Optional[str] = None,
     answered_example: bool = False,
@@ -231,6 +254,7 @@ def format_qa_task(
                 "include_title": include_title,
                 "include_context": include_context,
                 "tokenizer": tokenizer,
+                "max_length": max_length,
             },
             load_from_cache_file=False,
         )
