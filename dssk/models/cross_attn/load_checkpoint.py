@@ -19,6 +19,7 @@ CONFIG_KEYS_FORWARDED_TO_GET_MODEL = {
     "cross_attn_num_key_value_heads",
     "cross_attn_attention_bias",
     "model_type",
+    "max_len",
 }
 
 
