@@ -26,6 +26,7 @@ def get_model(
     cross_attn_num_key_value_heads: Optional[int] = None,
     cross_attn_attention_bias: Optional[bool] = False,
     cache_dir: Optional[str] = None,
+    max_len: int = -1,
 ) -> PreTrainedModel:
     """Helper function to get models..
     For models that are instances of GPTBigCodeForCausalLM, optionally
@@ -51,6 +52,7 @@ def get_model(
         cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
         cross_attn_attention_bias (Optional[bool]): Only used for Llama variations. Whether to train bias parameters.
         cache_dir (Optional[str]): Optional path to store hf files for pretrained models.
+        max_len: (int): Optional value of the maximum model length to be added to the model cfg. Useful for inference. Default -1 means "unset".
 
     Returns:
         PreTrainedModel: Pre-trained model.
@@ -74,6 +76,7 @@ def get_model(
                 cross_attn_attention_bias=cross_attn_attention_bias,
                 randomly_initialize_decoder=randomly_initialize_decoder,
                 cache_dir=cache_dir,
+                max_len=max_len,
             )
         elif model_type == "gptbigcode":
             model = CrossAttnGPTBigCode(
@@ -88,6 +91,7 @@ def get_model(
                 cross_attn_num_attention_heads=cross_attn_num_attention_heads,
                 randomly_initialize_decoder=randomly_initialize_decoder,
                 cache_dir=cache_dir,
+                max_len=max_len,
             )
         else:
             raise ValueError(f"Got unsupported model_type {model_type}.")
