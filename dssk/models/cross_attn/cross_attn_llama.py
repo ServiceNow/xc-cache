@@ -391,7 +391,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         randomly_initialize_decoder: Optional[bool] = False,
         cross_attn_attention_bias: Optional[bool] = False,
         cache_dir: Optional[str] = None,
-        max_len: Optional[int] = -1,
+        max_len: int = -1,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
