@@ -23,6 +23,9 @@ def get_training_args(
 
     training_args = TrainingArguments(
         remove_unused_columns=False,  # This needs to be False since our custom dataset passes fields that are processed in the collator.
+        label_names=[
+            "labels"
+        ],  # key in batch dict. if unset, labels are not passed to evaluation metrics
         # optimization
         per_device_train_batch_size=opt.per_gpu_batch_size,
         per_device_eval_batch_size=opt.per_gpu_batch_size,
