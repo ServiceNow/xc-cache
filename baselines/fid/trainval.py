@@ -100,6 +100,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     # get HF trainer
     trainer = get_trainer(
         model=model,
+        tokenizer=tokenizer,
         data_collator=collator,
         opt=opt,
         training_args=training_args,
