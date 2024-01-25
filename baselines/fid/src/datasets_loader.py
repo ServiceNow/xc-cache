@@ -8,16 +8,17 @@
 import torch
 import logging
 
+from datasets import Dataset
 from torch.utils.data import RandomSampler, Sampler
 
-from dssk.data.utils.pre_processors import PosContextPreProcessor
+from dssk.data.format_qa_task import fid_format
 
 logger = logging.getLogger(__name__)
 
 
 # new class
 class BatchSampler(Sampler):
-    def __init__(self, data_source, batch_size, dataset_names):
+    def __init__(self, data_source: Dataset, batch_size: int, dataset_names: list[str]):
         """Sample batches from an aggregated dataset such that each batch contains only samples from a single dataset.
 
         Args:
@@ -26,7 +27,7 @@ class BatchSampler(Sampler):
         """
 
         # hard-coded to avoid iterating through the whole dataset
-        self.dataset_names = dataset_names.split(";")
+        self.dataset_names = tuple(dataset_names)
 
         # a sampler per dataset, Filtering is slow but it's cached
         self.samplers = [
@@ -107,34 +108,20 @@ class Collator(object):
         self.answer_maxlength = answer_maxlength
         self.max_contexts = max_contexts
 
-    def _format_input(self, example):
-        n_contexts = len(example["contexts_list"])
-
-        if n_contexts < 1:  # no contexts provided
-            passages = [f"question: {example['question']}"]
-
-        elif n_contexts == 1:  # only one gold context provided
-            passages = [
-                f"question: {example['question']} title: {example['titles_list'][0]} context: {example['contexts_list'][0]}"
-            ]
-
-        else:
-            # select all gold and some distractors (for a total of up to max_contexts), and shuffle them to be robust to order variations
-            ctx_index = PosContextPreProcessor.truncate_true_list(
-                list(range(n_contexts)), example["useful_contexts"], max_items=self.max_contexts
-            )
-
-            passages = [
-                f"question: {example['question']} title: {example['titles_list'][i]} context: {example['contexts_list'][i]}"
-                for i in ctx_index
-            ]
-
-        return passages
-
     def __call__(self, batch_list):
-        target = [example.get("answer", None) for example in batch_list]
+        formatted_batch = [
+            fid_format(
+                d,
+                answered_example=True,
+                include_title=True,
+                include_context=True,
+                max_contexts_training=self.max_contexts,
+            )
+            for d in batch_list
+        ]
+
         target = self.tokenizer.batch_encode_plus(
-            target,
+            [f["target"] for f in formatted_batch],
             max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
             padding=True,
             return_tensors="pt",
@@ -145,9 +132,8 @@ class Collator(object):
             ~target["attention_mask"].bool(), -100
         )  # padding tokens are ignored when computing the loss
 
-        text_passages = [self._format_input(example) for example in batch_list]
         passage_ids, passage_masks = encode_passages(
-            text_passages, self.tokenizer, self.text_maxlength
+            [f["passages"] for f in formatted_batch], self.tokenizer, self.text_maxlength
         )
 
         return {
