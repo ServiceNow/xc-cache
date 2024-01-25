@@ -1,6 +1,6 @@
 from typing import Optional, Any
 
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, load_from_disk, Dataset
 
 from dssk.utils.hf_datasets import no_cache, update_infodict
 
@@ -102,7 +102,11 @@ def get_qa_task(
         A (usually short) answer.
         TODO: Some evaluation scheme may benefit from something more structured. We should think about it.
     """
-    tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
+    if dataset_name == "repliqa-syn":
+        tmp = load_from_disk("/mnt/dssk/data_rw/annotated_data/repliqa-syn_v0.0.0")["test"]
+    else:
+        tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
+
     if subset_size is not None:
         assert subset_size > 0
         tmp = tmp.select(range(subset_size))
