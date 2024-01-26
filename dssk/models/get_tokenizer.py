@@ -16,7 +16,7 @@ def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
     """
 
     tokenizer = AutoTokenizer.from_pretrained(
-        model_path, padding="max_length", truncation="max_length"
+        model_path, padding="max_length", truncation="max_length", padding_side="left"
     )
 
     pad_token = tokenizer.pad_token

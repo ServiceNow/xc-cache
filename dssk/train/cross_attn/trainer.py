@@ -21,6 +21,9 @@ class CustomTrainer(Trainer):
         else:
             labels = None
 
+        # Drop raw answers in case those are in the batch since they're not used here.
+        inputs.pop("raw_answer", None)
+
         # We first embed the context using the 'transformer' attribute of model,
         # which is the original decoder without the cross-attn layers.
         context_input_ids = inputs.pop("context_input_ids")
@@ -79,6 +82,8 @@ def get_trainer(
     wandb_project_name: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
     wandb_log_grads: Optional[bool] = None,
+    do_extra_evals: Optional[bool] = False,
+    generation_eval_max_sample_size: Optional[int] = None,
 ) -> Trainer:
     """Intanstiates Trainer object.
 
@@ -91,8 +96,10 @@ def get_trainer(
         validation_data (Dataset): Validation dataset.
         wandb_entity_name (Optional[str], optional): Defaults to None.
         wandb_project_name (Optional[str], optional): Defaults to None.
-        wandb_run_name (Optional[str], optional): Defaults to None.
-        wandb_log_grads (Optional[bool], optional): Wheter to log gradients on wandb. Defaults to None.
+        wandb_run_name (Optional[str]): Defaults to None.
+        wandb_log_grads (Optional[bool]): Wheter to log gradients on wandb. Defaults to None.
+        do_extra_evals (Optional[bool]): whether to run extra evaluations within logging.
+        generation_eval_max_sample_size (Optional[int]): Maximum sample size for evaluation that involves generation.
 
     Returns:
         Trainer: Configured trainer.
@@ -119,7 +126,11 @@ def get_trainer(
             )
 
         logging_callbacks = [
-            LoggingCallback(log_grads=wandb_log_grads),
+            LoggingCallback(
+                log_grads=wandb_log_grads,
+                do_extra_evals=do_extra_evals,
+                max_sample_size=generation_eval_max_sample_size,
+            ),
         ]
     else:
         logging_callbacks = []
