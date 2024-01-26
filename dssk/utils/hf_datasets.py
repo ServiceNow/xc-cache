@@ -142,12 +142,12 @@ def filter_with_dict(ds: Dataset, filter: dict[str, str]) -> Dataset:
     def keep_predicate(sample) -> bool:
         return all(str(sample[key]) == value for key, value in filter.items())
 
-    return ds.filter(keep_predicate)
+    return ds.filter(keep_predicate).flatten_indices(keep_in_memory=True)
 
 
 def filter_with_str(ds: Dataset, filter: str) -> Dataset:
     return filter_with_dict(
-        ds, {key_value.split(":")[0]: key_value.split(":")[1] for key_value in filter.split(";")}
+        ds, {key_value.split(":")[0]: key_value.split(":")[1] for key_value in filter.split(",")}
     )
 
 

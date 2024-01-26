@@ -62,12 +62,14 @@ KNOWN_CONTEXT_OPTIONS = {
 
 KNOWN_ANSWER_OPTIONS = {"newline": newline_answer_column, "deprecated": deprecated_answer_column}
 
+# The following two constants pertain to the "--subset_size" argument and `subsample_deterministic` utility.
 SUBSAMPLE_ID_COLUMNS = {
+    # The columns that, together, uniquely identify a sample (ORDER MATTERS FOR DETERMINISM!).
     # dataset: column,
     None: ("sample_idx", "dataset", "contexts_list"),  # Default used if dataset not in dict.
 }
-
 SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN = {
+    # If provided, we guarantee that no row has the same value for that column.
     # dataset0: column0,
     # dataset1: None,
     None: "question",  # Default used if dataset not in dict.
@@ -126,6 +128,7 @@ def get_qa_task(
 
     with no_cache():
         if filter is not None:
+            # Select rows according to provided filter. See "--filter" argument documentation.
             tmp = filter_with_str(tmp, filter)
         if subset_size is not None:
             id_columns = SUBSAMPLE_ID_COLUMNS.get(dataset_name, SUBSAMPLE_ID_COLUMNS[None])
