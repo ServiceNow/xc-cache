@@ -149,3 +149,30 @@ def filter_with_str(ds: Dataset, filter: str) -> Dataset:
     return filter_with_dict(
         ds, {key_value.split(":")[0]: key_value.split(":")[1] for key_value in filter.split(";")}
     )
+
+
+def merge_duplicated_rows(ds: Dataset, columns_as_list: tuple[str, ...]) -> Dataset:
+    """Merge duplicated rows, with non-duplicate columns converted to lists."""
+    id_columns = [name for name in ds.column_names if name not in set(columns_as_list)]
+    id_to_indices = {}
+    for index, sample in enumerate(ds):
+        id_ = id_tuple(sample, id_columns)
+        if id_ in id_to_indices:
+            id_to_indices[id_].add(index)
+        else:
+            id_to_indices[id_] = {index}
+    seen = set()
+
+    def generator():
+        for sample in ds:
+            id_ = id_tuple(sample, id_columns)
+            if id_ in seen:
+                continue
+            seen.add(id_)
+            indices_to_list = sorted(id_to_indices[id_])
+            for name in columns_as_list:
+                sample[name + "_list"] = [ds[i][name] for i in indices_to_list]
+                del sample[name]
+            yield sample
+
+    return Dataset.from_generator(generator, keep_in_memory=True)
