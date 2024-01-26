@@ -75,6 +75,7 @@ class DatasetWithContext(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
         include_questions_on_contexts: bool,
+        return_answers: bool = False,  # This should be set only for validation data.
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
         self.train_dataset = train_dataset.with_format("torch")
@@ -92,6 +93,8 @@ class DatasetWithContext(Dataset):
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
         self.include_questions_on_contexts = include_questions_on_contexts
+
+        self.return_answers = return_answers
 
     def __len__(self) -> int:
         """Returns the length of the dataset which matches that of the base dataset.
@@ -174,6 +177,9 @@ class DatasetWithContext(Dataset):
             "do_fim_transform": do_fim_transform,
         }
 
+        if self.return_answers:
+            processed_item["raw_answer"] = formatted_example["raw_answer"]
+
         return processed_item
 
 
@@ -244,6 +250,10 @@ class Collator:
             labels[labels == self.tokenizer.pad_token_id] = -100
         processed_batch["labels"] = labels
 
+        if "raw_answer" in batch[0]:
+            answer_list = [[el["raw_answer"]] for el in batch]
+            processed_batch["raw_answer"] = answer_list
+
         return processed_batch
 
 
@@ -285,6 +295,8 @@ def data_prep(
         validation_data = validation_data.filter(lambda x: x["dataset"] == data_subset.lower())
 
     training_data = training_data.shuffle()
+    # We shuffle validation data since we subsample it for evaluations that require generation.
+    validation_data = validation_data.shuffle()
 
     tokenizer = get_tokenizer(
         tokenizer_path,
@@ -296,6 +308,7 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
+        return_answers=False,
     )
     validation_dataset = DatasetWithContext(
         validation_data,
@@ -303,6 +316,7 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
+        return_answers=True,
     )
 
     return training_dataset, validation_dataset
