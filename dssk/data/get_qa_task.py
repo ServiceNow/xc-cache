@@ -2,7 +2,12 @@ from typing import Optional, Any
 
 from datasets import load_dataset, load_from_disk, Dataset
 
-from dssk.utils.hf_datasets import no_cache, update_infodict
+from dssk.utils.hf_datasets import (
+    no_cache,
+    update_infodict,
+    filter_with_str,
+    subsample_deterministic,
+)
 
 
 def empty_context_columns(d: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +62,17 @@ KNOWN_CONTEXT_OPTIONS = {
 
 KNOWN_ANSWER_OPTIONS = {"newline": newline_answer_column, "deprecated": deprecated_answer_column}
 
+SUBSAMPLE_ID_COLUMNS = {
+    # dataset: column,
+    None: ("sample_idx", "dataset", "contexts_list"),  # Default used if dataset not in dict.
+}
+
+SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN = {
+    # dataset0: column0,
+    # dataset1: None,
+    None: "question",  # Default used if dataset not in dict.
+}
+
 
 def get_qa_task(
     *,
@@ -66,6 +82,7 @@ def get_qa_task(
     task_context: Optional[str] = None,
     task_answer: Optional[str] = None,
     subset_size: Optional[int] = None,
+    filter: Optional[str] = None,
     **kwargs,  # Discarded
 ) -> Dataset:
     """Get the correct dataset (split) and preprocess it for a specific "task"
@@ -107,10 +124,15 @@ def get_qa_task(
     else:
         tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
 
-    if subset_size is not None:
-        assert subset_size > 0
-        tmp = tmp.select(range(subset_size))
     with no_cache():
+        if filter is not None:
+            tmp = filter_with_str(tmp, filter)
+        if subset_size is not None:
+            id_columns = SUBSAMPLE_ID_COLUMNS.get(dataset_name, SUBSAMPLE_ID_COLUMNS[None])
+            guaranteed_unique_column = SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN.get(
+                dataset_name, SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN[None]
+            )
+            tmp = subsample_deterministic(tmp, subset_size, id_columns, guaranteed_unique_column)
         if task_answer:
             tmp = tmp.map(KNOWN_ANSWER_OPTIONS[task_answer])
         if task_context:
