@@ -55,6 +55,7 @@ def cross_uaf_question_in_context(
         "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
         "cross_input_str": f"<|user|>\n<|C|><|assistant|>\n{context}{eos_token}",
         "cross_input_str_with_question": f"<|user|>\n{d['question']}<|C|><|assistant|>\n{context}{eos_token}",
+        "raw_answer": f"{answer}",  # Used for cross-validation
     }
 
 
