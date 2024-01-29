@@ -52,7 +52,20 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     checkpoint_path = base_path / model_name
     checkpoint_path.mkdir(parents=True, exist_ok=True)
 
-    model = FiDT5.from_pretrained(model_name)
+    # loading pre-trained model without HF trainer state
+    if opt.model_path is not None and "checkpoint" not in opt.model_path:
+        model = FiDT5.from_pretrained(opt.model_path)
+        resume_ckpt = False
+    else:
+        model = FiDT5.from_pretrained(model_name)
+
+        # resume training from specified checkpoint path
+        if opt.model_path is not None:
+            resume_ckpt = opt.model_path
+        # or from the last checkpoint saved in savedir. If no checkpoints are found, training is done from scratch
+        else:
+            resume_ckpt = len(list(checkpoint_path.glob("checkpoint*"))) > 0
+
     tokenizer = transformers.T5Tokenizer.from_pretrained(
         model_name, model_max_length=text_maxlentgh
     )
@@ -107,12 +120,6 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
         training_data=train_dataset,
         validation_data=eval_dataset,
     )
-    # resume training from specified checkpoint path
-    if opt.model_path is not None:
-        resume_ckpt = opt.model_path
-    # or from the last checkpoint saved in savedir. If no checkpoints are found, training is done from scratch
-    else:
-        resume_ckpt = len(list(checkpoint_path.glob("checkpoint*"))) > 0
 
     # train and evaluate on validation set + logging and checkpointing
     trainer.train(resume_from_checkpoint=resume_ckpt)
