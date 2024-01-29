@@ -15,6 +15,18 @@ def postproc_tulu2(raw_answers: list[str]) -> list[str]:
     return answers
 
 
+def postproc_X(raw_answers: list[str]) -> list[str]:
+    """Our X model tends to generate answers that end with </s>.
+    So cut everything starting with the first such tag in the answer: </s>
+    """
+    answers = []
+    for s in raw_answers:
+        s = s.split("</s>")[0]
+        answers.append(s)
+    return answers
+
+
 KNOWN_ANSWER_PROCESSING = {
     "postproc_tulu2": postproc_tulu2,
+    "postproc_X": postproc_X,
 }
