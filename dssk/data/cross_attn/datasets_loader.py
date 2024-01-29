@@ -178,6 +178,12 @@ class DatasetWithContext(Dataset):
         }
 
         if self.return_answers:
+            no_answer_input_ids = self.tokenizer(
+                formatted_example["no_answer_self_input_str"],
+                max_length=self.context_length,
+                truncation=True,
+            )["input_ids"]
+            processed_item["no_answer_input_ids"] = no_answer_input_ids
             processed_item["raw_answer"] = formatted_example["raw_answer"]
 
         return processed_item
@@ -250,7 +256,23 @@ class Collator:
             labels[labels == self.tokenizer.pad_token_id] = -100
         processed_batch["labels"] = labels
 
+        # extra fields used only for extra evaluations that require generation.
         if "raw_answer" in batch[0]:
+            no_answer_input_ids_list = [el["no_answer_input_ids"] for el in batch]
+            tokenized_no_answer_input_ids = self.tokenizer.pad(
+                {"input_ids": no_answer_input_ids_list},
+                max_length=self.maximum_length,
+                padding="longest",
+                return_tensors="pt",
+            )
+            processed_batch.update(
+                {
+                    "no_answer_input_ids": tokenized_no_answer_input_ids["input_ids"],
+                    "no_answer_attention_mask": tokenized_no_answer_input_ids[
+                        "attention_mask"
+                    ].float(),
+                }
+            )
             answer_list = [[el["raw_answer"]] for el in batch]
             processed_batch["raw_answer"] = answer_list
 
