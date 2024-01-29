@@ -66,7 +66,7 @@ def update_infodict(
     # Get the information dictionary before the update.
     if source_ds is None:
         source_ds = ds
-    tmp_d = get_infodict(ds)
+    tmp_d = get_infodict(source_ds)
 
     # Check for overwrite
     if not allow_overwrite:
@@ -151,16 +151,27 @@ def filter_with_str(ds: Dataset, filter: str) -> Dataset:
     )
 
 
-def merge_duplicated_rows(ds: Dataset, columns_as_list: tuple[str, ...]) -> Dataset:
-    """Merge duplicated rows, with non-duplicate columns converted to lists."""
-    id_columns = [name for name in ds.column_names if name not in set(columns_as_list)]
+def merge_duplicated_rows(
+    ds: Dataset, columns_as_list: Iterable[str], columns_as_csv: Iterable[str] = ()
+) -> Dataset:
+    """Merge duplicated rows, with non-duplicate columns converted to lists.
+
+    The name of columns passed in `columns_as_list` is postfixed with "_list", and their content becomes a list of the "duplicated" rows.
+    The name of columns passed in `columns_as_csv` remains unchanged, and their content becomes a comma-separated string of the "duplicated" rows.
+    The remaining columns are left unchanged, and their content determines whether a row is "duplicated" or not.
+    """
+    columns_as_list = tuple(columns_as_list)
+    columns_as_csv = tuple(columns_as_csv)
+    id_columns = [
+        name for name in ds.column_names if name not in set(columns_as_list).union(columns_as_csv)
+    ]
     id_to_indices = {}
     for index, sample in enumerate(ds):
         id_ = id_tuple(sample, id_columns)
         if id_ in id_to_indices:
-            id_to_indices[id_].add(index)
+            id_to_indices[id_].append(index)
         else:
-            id_to_indices[id_] = {index}
+            id_to_indices[id_] = [index]
     seen = set()
 
     def generator():
@@ -169,10 +180,15 @@ def merge_duplicated_rows(ds: Dataset, columns_as_list: tuple[str, ...]) -> Data
             if id_ in seen:
                 continue
             seen.add(id_)
-            indices_to_list = sorted(id_to_indices[id_])
             for name in columns_as_list:
-                sample[name + "_list"] = [ds[i][name] for i in indices_to_list]
+                sample[name + "_list"] = [ds[i][name] for i in id_to_indices[id_]]
                 del sample[name]
+            for name in columns_as_csv:
+                sample[name] = ",".join(str(ds[i][name]) for i in id_to_indices[id_])
             yield sample
 
-    return Dataset.from_generator(generator, keep_in_memory=True)
+    out = Dataset.from_generator(generator, keep_in_memory=True)
+    mdr = get_infodict(ds).get("merge_duplicated_rows", [])
+    mdr.append({"columns_as_list": list(columns_as_list), "columns_as_csv": list(columns_as_csv)})
+    update_infodict(out, {"merge_duplicated_rows": mdr}, allow_overwrite=True, source_ds=ds)
+    return out
