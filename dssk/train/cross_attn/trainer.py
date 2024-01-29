@@ -21,8 +21,10 @@ class CustomTrainer(Trainer):
         else:
             labels = None
 
-        # Drop raw answers in case those are in the batch since they're not used here.
+        # Drop fields related to generationin case those are in the batch since they're not used here.
         inputs.pop("raw_answer", None)
+        inputs.pop("no_answer_input_ids", None)
+        inputs.pop("no_answer_attention_mask", None)
 
         # We first embed the context using the 'transformer' attribute of model,
         # which is the original decoder without the cross-attn layers.
