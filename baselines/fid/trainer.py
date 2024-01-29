@@ -15,6 +15,12 @@ from baselines.fid.src.t5_wrapper import FiDT5
 from typing import Callable, Dict, Optional
 
 
+class EvaluateFirstStepCallback(TrainerCallback):
+    def on_step_begin(self, args, state, control, **kwargs):
+        if state.global_step == 0:
+            control.should_evaluate = True
+
+
 class FiDTrainer(Trainer):
     """Custom trainer class for training FiD."""
 
@@ -152,6 +158,7 @@ def get_trainer(
         train_dataset=training_data,
         eval_dataset=validation_data,
         compute_metrics_fn=compute_metrics_fn,
+        callbacks=[EvaluateFirstStepCallback()],
     )
 
     return trainer
