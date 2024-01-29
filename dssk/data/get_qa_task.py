@@ -75,6 +75,10 @@ SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN = {
     None: "question",  # Default used if dataset not in dict.
 }
 
+DATASETS_TO_LOAD_FROM_DISK = {
+    "repliqa-syn": "/mnt/dssk/data_rw/annotated_data/repliqa-syn_v0.0.0",
+}
+
 
 def get_qa_task(
     *,
@@ -121,8 +125,8 @@ def get_qa_task(
         A (usually short) answer.
         TODO: Some evaluation scheme may benefit from something more structured. We should think about it.
     """
-    if dataset_name == "repliqa-syn":
-        tmp = load_from_disk("/mnt/dssk/data_rw/annotated_data/repliqa-syn_v0.0.0")["test"]
+    if dataset_name in DATASETS_TO_LOAD_FROM_DISK:
+        tmp = load_from_disk(DATASETS_TO_LOAD_FROM_DISK[dataset_name])[dataset_split]
     else:
         tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
 
