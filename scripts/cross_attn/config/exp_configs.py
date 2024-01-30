@@ -299,7 +299,7 @@ MODEL_CONFIGS = {
         "bf16": True,
         "cross_attn_num_key_value_heads": None,
         "cross_attn_attention_bias": False,
-        "cross_attn_skip_connections": True,
+        "cross_attn_skip_connections": False,
         "model_type": "mistral",
     },
 }
