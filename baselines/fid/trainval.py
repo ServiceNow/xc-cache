@@ -53,7 +53,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> str:
     checkpoint_path.mkdir(parents=True, exist_ok=True)
 
     # loading pre-trained model without HF trainer state
-    if opt.model_path is not None and "checkpoint" not in opt.model_path:
+    if opt.model_path is not None and not (Path(opt.model_path) / "trainer_state.json").exists():
         model = FiDT5.from_pretrained(opt.model_path)
         resume_ckpt = False
     else:
