@@ -8,6 +8,7 @@ from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
 from dssk.data.format_qa_task import cross_uaf_question_in_context
+from dssk.models import infer_model_type
 
 
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
@@ -75,7 +76,10 @@ class DatasetWithContext(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
         include_questions_on_contexts: bool,
-        return_answers: bool = False,  # This should be set only for validation data.
+        return_answers: Optional[bool] = False,  # This should be set only for validation data.
+        use_instruction_format: Optional[
+            bool
+        ] = False,  # This should be set for instruction mistral variants.
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
         self.train_dataset = train_dataset.with_format("torch")
@@ -93,6 +97,7 @@ class DatasetWithContext(Dataset):
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
         self.include_questions_on_contexts = include_questions_on_contexts
+        self.use_instruction_format = use_instruction_format
 
         self.return_answers = return_answers
 
@@ -136,6 +141,7 @@ class DatasetWithContext(Dataset):
             self.train_dataset[example_idx],
             answered_example=True,
             eos_token=self.tokenizer.eos_token,
+            use_instruction_format=self.use_instruction_format,
         )
 
         if use_context:
@@ -287,6 +293,7 @@ def data_prep(
     data_cache_dir: str = None,
     include_context_ids: Optional[bool] = False,
     include_questions_on_contexts: Optional[bool] = True,
+    model_type: Optional[str] = None,
 ) -> Union[List[Dataset], Dataset]:
     """Get and pre-process training dataset. This assumes data was previously prepared and context embeddings
     are available in the dataset.
@@ -299,6 +306,7 @@ def data_prep(
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
         include_questions_on_contexts (Optional[bool]): Whether to prepend questions on contexts fed to the encoder.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode", "mistral"}.
 
     Returns:
         Union[List[Dataset], Dataset]: Processed datasets.
@@ -324,6 +332,9 @@ def data_prep(
         tokenizer_path,
     )
 
+    if model_type is None:
+        model_type = infer_model_type(model_path)
+
     training_dataset = DatasetWithContext(
         training_data,
         context_length=context_length,
@@ -331,6 +342,7 @@ def data_prep(
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
         return_answers=False,
+        use_instruction_format=model_type == "mistral",
     )
     validation_dataset = DatasetWithContext(
         validation_data,
@@ -339,6 +351,7 @@ def data_prep(
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
         return_answers=True,
+        use_instruction_format=model_type == "mistral",
     )
 
     return training_dataset, validation_dataset
