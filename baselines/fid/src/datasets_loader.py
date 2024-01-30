@@ -90,8 +90,10 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
         max_n_tokens = max(max_n_tokens, p["attention_mask"].shape[1])
 
     # number of contexts may vary within a batch. Need to pad that dimension
-    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0)
-    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0)
+    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(tokenizer.pad_token_id)
+    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(
+        tokenizer.pad_token_id
+    )
 
     # log statistics
     logger.debug(
