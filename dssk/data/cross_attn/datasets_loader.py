@@ -339,7 +339,7 @@ def data_prep(
     )
 
     if model_type is None:
-        model_type = infer_model_type(model_path)
+        model_type = infer_model_type(tokenizer_path)
 
     training_dataset = DatasetWithContext(
         training_data,
