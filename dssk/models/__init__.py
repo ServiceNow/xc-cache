@@ -6,6 +6,7 @@ __all__ = ["KNOWN_MODEL_TYPE", "get_model_string", "infer_model_type"]
 KNOWN_MODEL_TYPE = {
     "fid": {"fid"},
     "llama": {"llama", "tulu"},
+    "mistral": {"mistral"},
     "gptbigcode": {"code"},
     "toto": set(),
 }

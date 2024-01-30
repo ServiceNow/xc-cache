@@ -30,7 +30,7 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "cross_attn_num_key_value_heads": None,  # Only used for llama variants.
     "cross_attn_attention_bias": False,  # Only used for llama variants.
     "cross_attn_skip_connections": False,
-    "model_type": "gptbigcode",  # Set in the specific config below if using a llama variant.
+    "model_type": "gptbigcode",  # Set in the specific config below if using a llama or mistral variant.
 }
 
 MODEL_CONFIGS = {
@@ -176,10 +176,10 @@ MODEL_CONFIGS = {
         "skip_steps": 32,
         "context_size": 6144,
         "learning_rate": 2e-4,
-        "weight_decay": 1e-3,
-        "lr_scheduler_type": "cosine",
+        "weight_decay": 0.0,
+        "lr_scheduler_type": "linear",
         "include_context_ids": True,
-        "cross_attn_dropout_prob": 0.2,
+        "cross_attn_dropout_prob": 0.1,
         "cross_attn_final_layer": True,
         "cross_attn_shared_projections": False,
         "cross_attn_hidden_size": 1024,
@@ -190,6 +190,7 @@ MODEL_CONFIGS = {
         "bf16": True,
         "cross_attn_num_key_value_heads": None,
         "cross_attn_attention_bias": False,
+        "cross_attn_skip_connections": False,
         "model_type": "llama",
     },
     "crossattn_tulu-7b_2x8": {  # Ablation case with 2 cross-attn layers and a stride of 8.
@@ -272,6 +273,34 @@ MODEL_CONFIGS = {
         "cross_attn_num_key_value_heads": None,
         "cross_attn_attention_bias": False,
         "model_type": "llama",
+    },
+    "crossattn_mistral-7b": {
+        "model_path": "mistralai/Mistral-7B-Instruct-v0.2",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "num_cross_attn_layers": 4,
+        "cross_attn_layers_stride": 6,
+        "cross_attn_shared_weights": False,
+        "train_batch_size": 1,
+        "test_batch_size": 1,
+        "skip_steps": 32,
+        "context_size": 6144,
+        "learning_rate": 2e-4,
+        "weight_decay": 0.0,
+        "lr_scheduler_type": "linear",
+        "include_context_ids": True,
+        "cross_attn_dropout_prob": 0.1,
+        "cross_attn_final_layer": True,
+        "cross_attn_shared_projections": False,
+        "cross_attn_hidden_size": 1024,
+        "cross_attn_num_attention_heads": 32,
+        "label_smoothing_factor": 0.0,
+        "gradient_checkpointing": True,
+        "fp16": False,
+        "bf16": True,
+        "cross_attn_num_key_value_heads": None,
+        "cross_attn_attention_bias": False,
+        "cross_attn_skip_connections": True,
+        "model_type": "mistral",
     },
 }
 

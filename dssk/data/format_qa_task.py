@@ -42,9 +42,21 @@ def cross_user_assistant_format(
 
 
 def cross_uaf_question_in_context(
-    d: dict[str, Any], answered_example: bool, eos_token: str = "", **kwargs
+    d: dict[str, Any],
+    answered_example: bool,
+    eos_token: str = "",
+    use_instruction_format: Optional[bool] = False,
+    **kwargs,
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+
+    if use_instruction_format:
+        pre_q_str = "[INST] "
+        post_q_str = " [/INST] "
+    else:
+        pre_q_str = "<|user|>\n"
+        post_q_str = "\n<|assistant|>\n"
+
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
@@ -52,10 +64,10 @@ def cross_uaf_question_in_context(
         answer = ""
     context = get_single_context_with_trivial_strategy(d)
     return {
-        "self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n{answer}{eos_token}",
-        "cross_input_str": f"<|user|>\n<|C|><|assistant|>\n{context}{eos_token}",
-        "cross_input_str_with_question": f"<|user|>\n{d['question']}<|C|><|assistant|>\n{context}{eos_token}",
-        "no_answer_self_input_str": f"<|user|>\n{d['question']}\n<|assistant|>\n",
+        "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
+        "cross_input_str": f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}",
+        "cross_input_str_with_question": f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}",
+        "no_answer_self_input_str": f"{pre_q_str}{d['question']}{post_q_str}",
         "raw_answer": f"{answer}",  # Used for cross-validation
     }
 
