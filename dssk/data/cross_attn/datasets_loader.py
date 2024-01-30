@@ -7,7 +7,10 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
-from dssk.data.format_qa_task import cross_uaf_question_in_context
+from dssk.data.format_qa_task import (
+    cross_uaf_question_in_context,
+    cross_instruct_question_in_context,
+)
 from dssk.models import infer_model_type
 
 
@@ -97,7 +100,11 @@ class DatasetWithContext(Dataset):
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
         self.include_questions_on_contexts = include_questions_on_contexts
-        self.use_instruction_format = use_instruction_format
+
+        if use_instruction_format:
+            self.formatter = cross_instruct_question_in_context
+        else:
+            self.formatter = cross_uaf_question_in_context
 
         self.return_answers = return_answers
 
@@ -137,11 +144,10 @@ class DatasetWithContext(Dataset):
             do_fim_transform = False  # No FIM for Q&A inputs.
             example_idx = i
 
-        formatted_example = cross_uaf_question_in_context(
+        formatted_example = self.formatter(
             self.train_dataset[example_idx],
             answered_example=True,
             eos_token=self.tokenizer.eos_token,
-            use_instruction_format=self.use_instruction_format,
         )
 
         if use_context:
