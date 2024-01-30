@@ -29,6 +29,7 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "label_smoothing_factor": 0.0,
     "cross_attn_num_key_value_heads": None,  # Only used for llama variants.
     "cross_attn_attention_bias": False,  # Only used for llama variants.
+    "cross_attn_skip_connections": False,
     "model_type": "gptbigcode",  # Set in the specific config below if using a llama variant.
 }
 
@@ -60,14 +61,15 @@ MODEL_CONFIGS = {
     },
     "crossattn_starcoderbase-1b": {
         "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-1b",
+        "data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 3,
         "cross_attn_shared_weights": False,
         "train_batch_size": 1,
         "test_batch_size": 1,
         "skip_steps": 1,
-        "context_size": 2048,
-        "learning_rate": 2e-4,
+        "context_size": 128,
+        "learning_rate": 3e-4,
         "weight_decay": 5e-1,
         "lr_scheduler_type": "cosine",
         "include_context_ids": True,

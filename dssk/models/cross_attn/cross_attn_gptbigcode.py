@@ -323,6 +323,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         cross_attn_shared_projections: Optional[bool] = False,
         cross_attn_hidden_size: Optional[int] = None,
         cross_attn_num_attention_heads: Optional[int] = None,
+        cross_attn_skip_connections: Optional[bool] = False,
         randomly_initialize_decoder: Optional[bool] = False,
         cache_dir: Optional[str] = None,
         max_len: int = -1,
@@ -347,6 +348,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 "cross_attn_hidden_size": cross_attn_hidden_size,
                 "cross_attn_num_attention_heads": cross_attn_num_attention_heads,
                 "cross_attn_shared_projections": cross_attn_shared_projections,
+                "cross_attn_skip_connections": cross_attn_skip_connections,
                 "max_len": max_len,
             }
         )
@@ -359,6 +361,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
         self.cross_attn_final_layer = cross_attn_final_layer
+
+        self.cross_attn_skip_connections = cross_attn_skip_connections
 
         if randomly_initialize_decoder:
             # Random init of all parameters.
@@ -826,5 +830,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
             )
+
+        if self.cross_attn_skip_connections:
+            return [hidden_states + cross_attn_outputs[0]]
 
         return cross_attn_outputs
