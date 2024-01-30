@@ -8,19 +8,15 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
-import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 import transformers
 from transformers.cache_utils import Cache
 from transformers.activations import ACT2FN
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
-from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-from transformers.utils.import_utils import is_torch_fx_available
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
     MistralAttention,
-    MistralRMSNorm,
     MistralForCausalLM,
     rotate_half,
     repeat_kv,
@@ -66,13 +62,6 @@ class MistralRotaryEmbedding(nn.Module):
             self.cos_cached[:seq_len].to(dtype=x.dtype),
             self.sin_cached[:seq_len].to(dtype=x.dtype),
         )
-
-
-def rotate_half(x):
-    """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
-    return torch.cat((-x2, x1), dim=-1)
 
 
 def apply_rotary_pos_emb(q_or_k, cos, sin, position_ids, unsqueeze_dim=1):
@@ -213,7 +202,7 @@ class MistralCrossAttention(MistralAttention):
         key_states = apply_rotary_pos_emb(key_states, kv_cos, kv_sin, position_ids)
 
         if past_key_value is not None:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            cache_kwargs = {"sin": kv_sin, "cos": kv_cos}  # Specific to RoPE models
             key_states, value_states = past_key_value.update(
                 key_states, value_states, self.layer_idx, cache_kwargs
             )
