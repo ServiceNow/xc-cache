@@ -79,10 +79,8 @@ class DatasetWithContext(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
         include_questions_on_contexts: bool,
+        use_instruction_format: bool,  # This should be set for instruction mistral variants.
         return_answers: Optional[bool] = False,  # This should be set only for validation data.
-        use_instruction_format: Optional[
-            bool
-        ] = False,  # This should be set for instruction mistral variants.
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
         self.train_dataset = train_dataset.with_format("torch")
@@ -347,8 +345,8 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
-        return_answers=False,
         use_instruction_format=model_type == "mistral",
+        return_answers=False,
     )
     validation_dataset = DatasetWithContext(
         validation_data,
@@ -356,8 +354,8 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
-        return_answers=True,
         use_instruction_format=model_type == "mistral",
+        return_answers=True,
     )
 
     return training_dataset, validation_dataset
