@@ -45,17 +45,38 @@ def cross_uaf_question_in_context(
     d: dict[str, Any],
     answered_example: bool,
     eos_token: str = "",
-    use_instruction_format: Optional[bool] = False,
     **kwargs,
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
 
-    if use_instruction_format:
-        pre_q_str = "[INST] "
-        post_q_str = " [/INST] "
+    pre_q_str = "<|user|>\n"
+    post_q_str = "\n<|assistant|>\n"
+
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
     else:
-        pre_q_str = "<|user|>\n"
-        post_q_str = "\n<|assistant|>\n"
+        answer = ""
+    context = get_single_context_with_trivial_strategy(d)
+    return {
+        "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
+        "cross_input_str": f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}",
+        "cross_input_str_with_question": f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}",
+        "no_answer_self_input_str": f"{pre_q_str}{d['question']}{post_q_str}",
+        "raw_answer": f"{answer}",  # Used for cross-validation
+    }
+
+
+def cross_instruct_question_in_context(
+    d: dict[str, Any],
+    answered_example: bool,
+    eos_token: str = "",
+    **kwargs,
+) -> dict[str, Any]:
+    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+
+    pre_q_str = "[INST] "
+    post_q_str = " [/INST] "
 
     answer = d.get("answer", "")
     if answered_example:
@@ -228,6 +249,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_colon": cross_colon_format,
     "cross_uaf": cross_user_assistant_format,
     "cross_uaf_qic": cross_uaf_question_in_context,
+    "cross_instruct_qic": cross_instruct_question_in_context,
     "cross_uaf_cut_then_cat": cross_uaf_cut_then_cat,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
