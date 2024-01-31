@@ -7,7 +7,11 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
-from dssk.data.format_qa_task import cross_uaf_question_in_context
+from dssk.data.format_qa_task import (
+    cross_uaf_question_in_context,
+    cross_instruct_question_in_context,
+)
+from dssk.models import infer_model_type
 
 
 # Adapted from https://github.com/EleutherAI/gpt-neox/blob/FIM-clean/megatron/data/gpt2_dataset.py#L341
@@ -75,6 +79,7 @@ class DatasetWithContext(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
         include_questions_on_contexts: bool,
+        use_instruction_format: bool,  # This should be set for instruction mistral variants.
         return_answers: bool = False,  # This should be set only for validation data.
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
@@ -93,6 +98,11 @@ class DatasetWithContext(Dataset):
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
         self.include_questions_on_contexts = include_questions_on_contexts
+
+        if use_instruction_format:
+            self.formatter = cross_instruct_question_in_context
+        else:
+            self.formatter = cross_uaf_question_in_context
 
         self.return_answers = return_answers
 
@@ -132,7 +142,7 @@ class DatasetWithContext(Dataset):
             do_fim_transform = False  # No FIM for Q&A inputs.
             example_idx = i
 
-        formatted_example = cross_uaf_question_in_context(
+        formatted_example = self.formatter(
             self.train_dataset[example_idx],
             answered_example=True,
             eos_token=self.tokenizer.eos_token,
@@ -283,10 +293,12 @@ def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
-    data_subset: str = "all",
+    training_data_subset: str = "all",
+    validation_data_subset: str = "all",
     data_cache_dir: str = None,
-    include_context_ids: Optional[bool] = False,
-    include_questions_on_contexts: Optional[bool] = True,
+    include_context_ids: bool = False,
+    include_questions_on_contexts: bool = True,
+    model_type: Optional[str] = None,
 ) -> Union[List[Dataset], Dataset]:
     """Get and pre-process training dataset. This assumes data was previously prepared and context embeddings
     are available in the dataset.
@@ -295,10 +307,12 @@ def data_prep(
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
-        data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
+        training_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
+        validation_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
-        include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
-        include_questions_on_contexts (Optional[bool]): Whether to prepend questions on contexts fed to the encoder.
+        include_context_ids (bool): Whether to include context ids in the training batch. Defaults to False.
+        include_questions_on_contexts (bool): Whether to prepend questions on contexts fed to the encoder.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode", "mistral"}.
 
     Returns:
         Union[List[Dataset], Dataset]: Processed datasets.
@@ -312,9 +326,14 @@ def data_prep(
     training_data = data["train"]
     validation_data = data["val"]
 
-    if data_subset.lower() != "all":
-        training_data = training_data.filter(lambda x: x["dataset"] == data_subset.lower())
-        validation_data = validation_data.filter(lambda x: x["dataset"] == data_subset.lower())
+    if training_data_subset.lower() != "all":
+        training_data = training_data.filter(
+            lambda x: x["dataset"] == training_data_subset.lower()
+        )
+    if validation_data_subset.lower() != "all":
+        validation_data = validation_data.filter(
+            lambda x: x["dataset"] == validation_data_subset.lower()
+        )
 
     training_data = training_data.shuffle()
     # We shuffle validation data since we subsample it for evaluations that require generation.
@@ -324,12 +343,16 @@ def data_prep(
         tokenizer_path,
     )
 
+    if model_type is None:
+        model_type = infer_model_type(tokenizer_path)
+
     training_dataset = DatasetWithContext(
         training_data,
         context_length=context_length,
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
+        use_instruction_format=model_type == "mistral",
         return_answers=False,
     )
     validation_dataset = DatasetWithContext(
@@ -338,6 +361,7 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
+        use_instruction_format=model_type == "mistral",
         return_answers=True,
     )
 

@@ -76,7 +76,7 @@ class CrossAttention(GPTBigCodeAttention):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
-        self.attn_dropout = nn.Dropout(config.cross_attn_dropout_prob)
+        self.cross_attn_dropout = nn.Dropout(config.cross_attn_dropout_prob)
 
         self.layer_idx = layer_idx
 
@@ -176,8 +176,8 @@ class CrossAttention(GPTBigCodeAttention):
         layer_past: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
+        use_cache: bool = False,
+        output_attentions: bool = False,
     ) -> Union[
         Tuple[torch.Tensor, Optional[torch.Tensor]],
         Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, ...]],
@@ -203,7 +203,7 @@ class CrossAttention(GPTBigCodeAttention):
             # Of using the expected value of its inputs, i.e., multiplying inputs by the
             # dropout probability.
             # We then only use this layer in training mode.
-            encoder_attention_mask = self.attn_dropout(encoder_attention_mask)
+            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
 
         attention_mask = encoder_attention_mask.view(batch_size, 1, -1).to(
             dtype=torch.bool, device=hidden_states.device
@@ -263,8 +263,8 @@ class CrossAttnGPTBigCodeBlock(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
+        use_cache: bool = False,
+        output_attentions: bool = False,
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -319,11 +319,12 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         cross_attn_layers_stride: int = 2,
         cross_attn_shared_weights: bool = True,
         cross_attn_dropout_prob: Optional[float] = 0.0,
-        cross_attn_final_layer: Optional[bool] = False,
-        cross_attn_shared_projections: Optional[bool] = False,
+        cross_attn_final_layer: bool = False,
+        cross_attn_shared_projections: bool = False,
         cross_attn_hidden_size: Optional[int] = None,
         cross_attn_num_attention_heads: Optional[int] = None,
-        randomly_initialize_decoder: Optional[bool] = False,
+        cross_attn_skip_connections: bool = False,
+        randomly_initialize_decoder: bool = False,
         cache_dir: Optional[str] = None,
         max_len: int = -1,
     ) -> None:
@@ -347,6 +348,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 "cross_attn_hidden_size": cross_attn_hidden_size,
                 "cross_attn_num_attention_heads": cross_attn_num_attention_heads,
                 "cross_attn_shared_projections": cross_attn_shared_projections,
+                "cross_attn_skip_connections": cross_attn_skip_connections,
+                "input_format_fn": "cross_uaf_question_in_context",
                 "max_len": max_len,
             }
         )
@@ -359,6 +362,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
         self.cross_attn_final_layer = cross_attn_final_layer
+
+        self.cross_attn_skip_connections = cross_attn_skip_connections
 
         if randomly_initialize_decoder:
             # Random init of all parameters.
@@ -515,7 +520,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         )
         return model_inputs
 
-    def train(self, mode: Optional[bool] = True) -> "CrossAttnGPTBigCode":
+    def train(self, mode: bool = True) -> "CrossAttnGPTBigCode":
         """Sets the module in training mode.
 
         Overrides train() to set only cross-attn params in train mode.
@@ -826,5 +831,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
             )
+
+        if self.cross_attn_skip_connections:
+            return [hidden_states + cross_attn_outputs[0]]
 
         return cross_attn_outputs

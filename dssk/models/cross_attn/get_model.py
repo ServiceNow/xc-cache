@@ -3,6 +3,7 @@ import torch
 from transformers import AutoModelForCausalLM, PreTrainedModel
 from dssk.models.cross_attn.cross_attn_gptbigcode import CrossAttnGPTBigCode
 from dssk.models.cross_attn.cross_attn_llama import CrossAttnLlama
+from dssk.models.cross_attn.cross_attn_mistral import CrossAttnMistral
 from dssk.models import infer_model_type
 
 
@@ -11,20 +12,21 @@ def get_model(
     bos_token_id: int,
     eos_token_id: int,
     pad_token_id: int,
-    use_gradient_checkpointing: Optional[bool] = False,
+    use_gradient_checkpointing: bool = False,
     device: Optional[Union[str, torch.device]] = None,
     n_cross_attn_layers: Optional[int] = 0,
     cross_attn_layers_stride: Optional[int] = 1,
-    cross_attn_shared_weights: Optional[bool] = True,
+    cross_attn_shared_weights: bool = True,
     cross_attn_dropout_prob: Optional[float] = 0.0,
-    cross_attn_final_layer: Optional[bool] = False,
-    cross_attn_shared_projections: Optional[bool] = False,
-    cross_attn_hidden_size: Optional[int] = None,
+    cross_attn_final_layer: bool = False,
+    cross_attn_shared_projections: bool = False,
+    cross_attn_hidden_size: [int] = None,
     cross_attn_num_attention_heads: Optional[int] = None,
-    randomly_initialize_decoder: Optional[bool] = False,
+    randomly_initialize_decoder: bool = False,
     model_type: Optional[str] = None,
     cross_attn_num_key_value_heads: Optional[int] = None,
-    cross_attn_attention_bias: Optional[bool] = False,
+    cross_attn_attention_bias: bool = False,
+    cross_attn_skip_connections: bool = False,
     cache_dir: Optional[str] = None,
     max_len: int = -1,
 ) -> PreTrainedModel:
@@ -48,9 +50,10 @@ def get_model(
         cross_attn_hidden_size (Optional[int]): If None (default), will use the base decoder's hidden size.
         cross_attn_num_attention_heads (Optional[int]): If None (default), will use the base decoder's number of attn heads.
         randomly_initialize_decoder (Optional[bool]): Whether to randomly initialize the decoder. Defaults to False.
-        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode"}.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode", "mistral"}.
         cross_attn_num_key_value_heads (Optional[int]): Only used for Llama variations. If None (default), will use the base decoder's number of attn heads.
         cross_attn_attention_bias (Optional[bool]): Only used for Llama variations. Whether to train bias parameters.
+        cross_attn_skip_connections (Optional[bool]): Whether to apply skip connections around cross-attn layers.
         cache_dir (Optional[str]): Optional path to store hf files for pretrained models.
         max_len: (int): Optional value of the maximum model length to be added to the model cfg. Useful for inference. Default -1 means "unset".
 
@@ -74,6 +77,7 @@ def get_model(
                 cross_attn_num_attention_heads=cross_attn_num_attention_heads,
                 cross_attn_num_key_value_heads=cross_attn_num_key_value_heads,
                 cross_attn_attention_bias=cross_attn_attention_bias,
+                cross_attn_skip_connections=cross_attn_skip_connections,
                 randomly_initialize_decoder=randomly_initialize_decoder,
                 cache_dir=cache_dir,
                 max_len=max_len,
@@ -89,6 +93,25 @@ def get_model(
                 cross_attn_shared_projections=cross_attn_shared_projections,
                 cross_attn_hidden_size=cross_attn_hidden_size,
                 cross_attn_num_attention_heads=cross_attn_num_attention_heads,
+                cross_attn_skip_connections=cross_attn_skip_connections,
+                randomly_initialize_decoder=randomly_initialize_decoder,
+                cache_dir=cache_dir,
+                max_len=max_len,
+            )
+        elif model_type == "mistral":
+            model = CrossAttnMistral(
+                model_path,
+                n_cross_attn_layers=n_cross_attn_layers,
+                cross_attn_layers_stride=cross_attn_layers_stride,
+                cross_attn_shared_weights=cross_attn_shared_weights,
+                cross_attn_dropout_prob=cross_attn_dropout_prob,
+                cross_attn_final_layer=cross_attn_final_layer,
+                cross_attn_shared_projections=cross_attn_shared_projections,
+                cross_attn_hidden_size=cross_attn_hidden_size,
+                cross_attn_num_attention_heads=cross_attn_num_attention_heads,
+                cross_attn_num_key_value_heads=cross_attn_num_key_value_heads,
+                cross_attn_attention_bias=cross_attn_attention_bias,
+                cross_attn_skip_connections=cross_attn_skip_connections,
                 randomly_initialize_decoder=randomly_initialize_decoder,
                 cache_dir=cache_dir,
                 max_len=max_len,
