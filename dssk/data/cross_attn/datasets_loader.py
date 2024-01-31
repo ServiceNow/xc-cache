@@ -327,9 +327,13 @@ def data_prep(
     validation_data = data["val"]
 
     if training_data_subset.lower() != "all":
-        training_data = training_data.filter(lambda x: x["dataset"] == data_subset.lower())
+        training_data = training_data.filter(
+            lambda x: x["dataset"] == training_data_subset.lower()
+        )
     if validation_data_subset.lower() != "all":
-        validation_data = validation_data.filter(lambda x: x["dataset"] == data_subset.lower())
+        validation_data = validation_data.filter(
+            lambda x: x["dataset"] == validation_data_subset.lower()
+        )
 
     training_data = training_data.shuffle()
     # We shuffle validation data since we subsample it for evaluations that require generation.
