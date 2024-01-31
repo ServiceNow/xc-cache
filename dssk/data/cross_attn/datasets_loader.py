@@ -293,7 +293,8 @@ def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
-    data_subset: str = "all",
+    training_data_subset: str = "all",
+    validation_data_subset: str = "all",
     data_cache_dir: str = None,
     include_context_ids: Optional[bool] = False,
     include_questions_on_contexts: Optional[bool] = True,
@@ -306,7 +307,8 @@ def data_prep(
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
-        data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
+        training_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
+        validation_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (Optional[bool]): Whether to include context ids in the training batch. Defaults to False.
         include_questions_on_contexts (Optional[bool]): Whether to prepend questions on contexts fed to the encoder.
@@ -324,8 +326,9 @@ def data_prep(
     training_data = data["train"]
     validation_data = data["val"]
 
-    if data_subset.lower() != "all":
+    if training_data_subset.lower() != "all":
         training_data = training_data.filter(lambda x: x["dataset"] == data_subset.lower())
+    if validation_data_subset.lower() != "all":
         validation_data = validation_data.filter(lambda x: x["dataset"] == data_subset.lower())
 
     training_data = training_data.shuffle()
