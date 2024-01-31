@@ -302,6 +302,33 @@ MODEL_CONFIGS = {
         "cross_attn_skip_connections": False,
         "model_type": "mistral",
     },
+    "crossattn_llama-7b": {
+        "model_path": "meta-llama/Llama-2-7b-hf",
+        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "num_cross_attn_layers": 4,
+        "cross_attn_layers_stride": 6,
+        "cross_attn_shared_weights": False,
+        "train_batch_size": 1,
+        "test_batch_size": 1,
+        "skip_steps": 32,
+        "context_size": 6144,
+        "learning_rate": 2e-4,
+        "weight_decay": 1e-3,
+        "lr_scheduler_type": "cosine",
+        "include_context_ids": True,
+        "cross_attn_dropout_prob": 0.2,
+        "cross_attn_final_layer": True,
+        "cross_attn_shared_projections": False,
+        "cross_attn_hidden_size": 1024,
+        "cross_attn_num_attention_heads": 32,
+        "label_smoothing_factor": 0.0,
+        "gradient_checkpointing": True,
+        "fp16": False,
+        "bf16": True,
+        "cross_attn_num_key_value_heads": None,
+        "cross_attn_attention_bias": False,
+        "model_type": "llama",
+    },
 }
 
 EXP_GROUPS = {}
