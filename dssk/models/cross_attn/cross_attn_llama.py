@@ -335,8 +335,8 @@ class CrossAttnLlamaBlock(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
+        use_cache: bool = False,
+        output_attentions: bool = False,
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -392,14 +392,14 @@ class CrossAttnLlama(LlamaForCausalLM):
         cross_attn_layers_stride: int = 2,
         cross_attn_shared_weights: bool = True,
         cross_attn_dropout_prob: Optional[float] = 0.0,
-        cross_attn_final_layer: Optional[bool] = False,
-        cross_attn_shared_projections: Optional[bool] = False,
+        cross_attn_final_layer: bool = False,
+        cross_attn_shared_projections: bool = False,
         cross_attn_hidden_size: Optional[int] = None,
         cross_attn_num_attention_heads: Optional[int] = None,
         cross_attn_num_key_value_heads: Optional[int] = None,
-        randomly_initialize_decoder: Optional[bool] = False,
-        cross_attn_attention_bias: Optional[bool] = False,
-        cross_attn_skip_connections: Optional[bool] = False,
+        randomly_initialize_decoder: bool = False,
+        cross_attn_attention_bias: bool = False,
+        cross_attn_skip_connections: bool = False,
         cache_dir: Optional[str] = None,
         max_len: int = -1,
     ) -> None:
@@ -598,7 +598,7 @@ class CrossAttnLlama(LlamaForCausalLM):
             model_inputs["token_type_ids"] = token_type_ids
         return model_inputs
 
-    def train(self, mode: Optional[bool] = True) -> "CrossAttnLlama":
+    def train(self, mode: bool = True) -> "CrossAttnLlama":
         """Sets the module in training mode.
 
         Overrides train() to set only cross-attn params in train mode.

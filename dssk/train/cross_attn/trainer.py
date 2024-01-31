@@ -84,7 +84,7 @@ def get_trainer(
     wandb_project_name: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
     wandb_log_grads: Optional[bool] = None,
-    do_extra_evals: Optional[bool] = False,
+    do_extra_evals: bool = False,
     generation_eval_max_sample_size: Optional[int] = None,
 ) -> Trainer:
     """Intanstiates Trainer object.

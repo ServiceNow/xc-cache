@@ -51,7 +51,7 @@ class CrossAttnInterface(AbstractLMInterface):
         model_peft_ckpt: Optional[str] = None,
         ds_config: Optional[str] = None,
         to_device: Optional[str] = None,
-        include_questions_on_contexts: Optional[bool] = True,
+        include_questions_on_contexts: bool = True,
         default_gen_args: Optional[dict[str, Any]] = None,
         **kwargs,  # Ignored
     ):
