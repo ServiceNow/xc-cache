@@ -396,6 +396,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "cross_attn_shared_projections": cross_attn_shared_projections,
                 "cross_attn_attention_bias": cross_attn_attention_bias,
                 "cross_attn_skip_connections": cross_attn_skip_connections,
+                "input_format_fn": "cross_uaf_question_in_context",
                 "max_len": max_len,
             }
         )
