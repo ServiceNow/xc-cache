@@ -124,6 +124,8 @@ class LlamaCrossAttention(LlamaAttention):
         # NOTE: self.is_causal is unused for now but will be useful if we decide to add flash_attn later.
         self.is_causal = False
 
+        self.cross_attn_dropout = nn.Dropout(config.cross_attn_dropout_prob)
+
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
@@ -249,6 +251,13 @@ class LlamaCrossAttention(LlamaAttention):
             encoder_attention_mask = torch.ones(
                 (batch_size, 1, batch_length, ctx_batch_len), device=hidden_states.device
             )
+
+        if self.training:
+            # Since we apply dropout on masks, we don't want its eval mode effect
+            # Of using the expected value of its inputs, i.e., multiplying inputs by the
+            # dropout probability.
+            # We then only use this layer in training mode.
+            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
 
         attention_mask = encoder_attention_mask.to(dtype=torch.bool, device=hidden_states.device)
 

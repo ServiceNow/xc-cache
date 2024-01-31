@@ -76,7 +76,7 @@ class CrossAttention(GPTBigCodeAttention):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
-        self.attn_dropout = nn.Dropout(config.cross_attn_dropout_prob)
+        self.cross_attn_dropout = nn.Dropout(config.cross_attn_dropout_prob)
 
         self.layer_idx = layer_idx
 
@@ -203,7 +203,7 @@ class CrossAttention(GPTBigCodeAttention):
             # Of using the expected value of its inputs, i.e., multiplying inputs by the
             # dropout probability.
             # We then only use this layer in training mode.
-            encoder_attention_mask = self.attn_dropout(encoder_attention_mask)
+            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
 
         attention_mask = encoder_attention_mask.view(batch_size, 1, -1).to(
             dtype=torch.bool, device=hidden_states.device
