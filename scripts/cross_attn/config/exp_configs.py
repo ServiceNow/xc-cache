@@ -1,6 +1,7 @@
 BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must be set in MODEL_CONFIGS below.
     "model_path": "TabbyML/SantaCoder-1B",
-    "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+    "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+    "validation_data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
     "include_questions_on_contexts": True,  # Whether to prepend questions on contexts.
     "num_cross_attn_layers": 4,
     "cross_attn_layers_stride": 2,
@@ -61,7 +62,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_starcoderbase-1b": {
         "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-1b",
-        "data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 3,
         "cross_attn_shared_weights": False,
@@ -140,7 +141,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b": {
         "model_path": "allenai/tulu-2-dpo-7b",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -167,7 +168,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-13b": {
         "model_path": "allenai/tulu-2-dpo-13b",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -195,7 +196,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_2x8": {  # Ablation case with 2 cross-attn layers and a stride of 8.
         "model_path": "allenai/tulu-2-dpo-7b",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 2,
         "cross_attn_layers_stride": 8,
         "cross_attn_shared_weights": False,
@@ -222,7 +223,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_8x2": {  # Ablation case with 8 cross-attn layers and a stride of 2.
         "model_path": "allenai/tulu-2-dpo-7b",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 2,
         "cross_attn_shared_weights": False,
@@ -249,7 +250,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_tulu-7b_8x3": {  # Ablation case with 8 cross-attn layers and a stride of 3.
         "model_path": "allenai/tulu-2-dpo-7b",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 3,
         "cross_attn_shared_weights": False,
@@ -276,7 +277,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_mistral-7b": {
         "model_path": "mistralai/Mistral-7B-Instruct-v0.2",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -304,7 +305,7 @@ MODEL_CONFIGS = {
     },
     "crossattn_llama-7b": {
         "model_path": "meta-llama/Llama-2-7b-hf",
-        "data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
+        "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 4,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
