@@ -1,5 +1,7 @@
 # Code adapted from https://github.com/huggingface/transformers/blob/main/examples/legacy/seq2seq/utils.py
 
+import torch
+
 from transformers import EvalPrediction, T5Tokenizer
 from typing import Callable, Dict, Iterable, List, Tuple
 
@@ -33,3 +35,47 @@ def build_compute_metrics_fn(tokenizer: T5Tokenizer) -> Callable[[EvalPrediction
         return scores
 
     return compute_metrics
+
+
+class GenEvaluator:
+    def __init__(
+        self,
+        tokenizer,
+    ):
+        self.f1_evaluator = F1("F1")
+        self.em_evaluator = EM("EM")
+        self.tokenizer = tokenizer
+
+    def __call__(self, model, data_loader) -> float:
+        """Compute generation metrics."""
+
+        predictions = []
+        targets = []
+
+        model.eval()
+        with torch.no_grad():
+            for inputs in data_loader:
+                labels_ids = inputs.pop("labels")
+
+                labels_ids = labels_ids.masked_fill(
+                    labels_ids == -100, self.tokenizer.pad_token_id
+                )
+                targets += [
+                    [target]
+                    for target in self.tokenizer.batch_decode(labels_ids, skip_special_tokens=True)
+                ]
+
+                output = model.generate(
+                    input_ids=inputs["input_ids"].to(model.device),
+                    attention_mask=inputs["attention_mask"].to(model.device),
+                    max_length=30,
+                )
+
+                predictions += self.tokenizer.batch_decode(output, skip_special_tokens=True)
+
+        metrics = {
+            "eval/gen_f1": self.f1_evaluator(predictions, targets)["f1"],
+            "eval/gen_em": self.em_evaluator(predictions, targets)["em"],
+        }
+
+        return metrics

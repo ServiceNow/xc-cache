@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, SequentialSampler, Subset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import DataCollator, Trainer, TrainerCallback, TrainingArguments, T5Tokenizer
 
-from baselines.fid.metrics import build_compute_metrics_fn
+from baselines.fid.metrics import GenEvaluator, build_compute_metrics_fn
 from baselines.fid.options import Options
 from baselines.fid.src.datasets_loader import BatchSampler
 from baselines.fid.src.t5_wrapper import FiDT5
@@ -15,10 +15,28 @@ from baselines.fid.src.t5_wrapper import FiDT5
 from typing import Callable, Dict, Optional
 
 
-class EvaluateFirstStepCallback(TrainerCallback):
+class EvaluateCallback(TrainerCallback):
+    """Callback to evaluate before starting training and to log generation metrics to wandb"""
+
+    def __init__(self, tokenizer, wandb_run):
+        super().__init__()
+
+        self.evaluator = GenEvaluator(tokenizer)
+        self._wandb = wandb_run
+
     def on_step_begin(self, args, state, control, **kwargs):
         if state.global_step == 0:
             control.should_evaluate = True
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        # only main process log generation metrics
+        if state.is_world_process_zero:
+            model = kwargs.pop("model")
+            eval_dataloader = kwargs.pop("eval_dataloader")
+
+            additional_metrics = self.evaluator(model, eval_dataloader)
+
+            self._wandb.log(additional_metrics, step=state.global_step)
 
 
 class FiDTrainer(Trainer):
@@ -140,7 +158,7 @@ def get_trainer(
             config[k] = value
 
     # init wandb logger
-    wandb.init(
+    wandb_run = wandb.init(
         name=None,
         project=opt.name,
         mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
@@ -158,7 +176,7 @@ def get_trainer(
         train_dataset=training_data,
         eval_dataset=validation_data,
         compute_metrics_fn=compute_metrics_fn,
-        callbacks=[EvaluateFirstStepCallback()],
+        callbacks=[EvaluateCallback(tokenizer, wandb_run)],
     )
 
     return trainer
