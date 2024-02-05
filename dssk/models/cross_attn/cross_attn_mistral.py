@@ -549,10 +549,10 @@ class CrossAttnMistral(MistralForCausalLM):
                 encoder_attention_mask = torch.ones_like(context_ids)
 
             with torch.no_grad():
-                encoder_hidden_states = self.transformer(
+                encoder_hidden_states = self.encode(
                     input_ids=context_ids,
                     attention_mask=encoder_attention_mask,
-                ).last_hidden_state.detach()
+                )
 
         model_inputs.update(
             {
@@ -858,3 +858,39 @@ class CrossAttnMistral(MistralForCausalLM):
             return [hidden_states + cross_attn_outputs[0]]
 
         return cross_attn_outputs
+
+    def encode(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+
+        if isinstance(input_ids, list):
+            # If we get a list of contexts, we embed each context
+            # indepedently and concatenate afterward.
+
+            # Input_ids and att_mask are expected to be such that:
+            # [[B, T, D]]*num_chunks
+
+            num_chunks = len(input_ids)
+
+            input_ids = torch.cat(input_ids, dim=0)
+            cat_attention_mask = torch.cat(attention_mask, dim=0)
+
+            encoder_hidden_states = self.transformer(
+                input_ids=input_ids,
+                attention_mask=cat_attention_mask,
+            ).last_hidden_state.detach()
+
+            encoder_hidden_states = torch.cat(
+                torch.chunk(encoder_hidden_states, num_chunks, dim=0), dim=1
+            )
+            attention_mask = torch.cat(attention_mask, dim=1)
+
+        else:
+            encoder_hidden_states = self.transformer(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            ).last_hidden_state.detach()
+
+        return encoder_hidden_states
