@@ -30,24 +30,10 @@ class CustomTrainer(Trainer):
         # which is the original decoder without the cross-attn layers.
         context_input_ids = inputs.pop("context_input_ids")
         with torch.no_grad():  # We don't need grads and need eval mode for embedding.
-            try:
-                encoder = model.module.transformer.eval()
-            except AttributeError:
-                encoder = model.transformer.eval()
-            if isinstance(context_input_ids, list):
-                # If we get a list of contexts, we embed each context indepedently.
-                encoder_hidden_states = [
-                    encoder(
-                        input_ids=context_ids,
-                        attention_mask=inputs["encoder_attention_mask"],
-                    ).last_hidden_state.detach()
-                    for context_ids in context_input_ids
-                ]
-            else:
-                encoder_hidden_states = encoder(
-                    input_ids=context_input_ids,
-                    attention_mask=inputs["encoder_attention_mask"],
-                ).last_hidden_state.detach()
+            encoder_hidden_states = model.encode(
+                input_ids=context_input_ids,
+                attention_mask=inputs["encoder_attention_mask"],
+            )
         inputs.update({"encoder_hidden_states": encoder_hidden_states})
 
         outputs = model(**inputs)
