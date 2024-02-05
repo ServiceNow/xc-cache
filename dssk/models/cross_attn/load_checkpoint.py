@@ -21,6 +21,7 @@ CONFIG_KEYS_FORWARDED_TO_GET_MODEL = {
     "cross_attn_skip_connections",
     "model_type",
     "max_len",
+    "include_questions_on_contexts",
 }
 
 
