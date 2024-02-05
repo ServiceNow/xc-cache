@@ -80,6 +80,7 @@ class DatasetWithContext(Dataset):
         include_context_ids: bool,
         include_questions_on_contexts: bool,
         use_instruction_format: bool,  # This should be set for instruction mistral variants.
+        chunked_contexts: bool,  # Split chunks of context rather than concatenating.
         return_answers: bool = False,  # This should be set only for validation data.
     ) -> None:
         """Instantiates an indexed dataset wrapping a base data source and contexts."""
@@ -98,6 +99,7 @@ class DatasetWithContext(Dataset):
         # If include_context_ids is not set, then only the first Q&A iteration over the data is performed, and context ids are never returned.
         self.include_context_ids = include_context_ids
         self.include_questions_on_contexts = include_questions_on_contexts
+        self.chunked_contexts = chunked_contexts
 
         if use_instruction_format:
             self.formatter = cross_instruct_question_in_context
@@ -146,10 +148,11 @@ class DatasetWithContext(Dataset):
             self.train_dataset[example_idx],
             answered_example=True,
             eos_token=self.tokenizer.eos_token,
+            return_context_list=self.chunked_contexts,
         )
 
         if use_context:
-            input_str = formatted_example["cross_input_str"]
+            input_str = formatted_example["useful_context"]
         else:
             input_str = formatted_example["self_input_str"]
 
@@ -173,11 +176,22 @@ class DatasetWithContext(Dataset):
             context_str = formatted_example["cross_input_str_with_question"]
         else:
             context_str = formatted_example["cross_input_str"]
-        context_input_ids = self.tokenizer(
-            context_str,
-            max_length=self.context_length,
-            truncation=True,
-        )["input_ids"]
+
+        if isinstance(context_str, list):
+            context_input_ids = [
+                self.tokenizer(
+                    context,
+                    max_length=self.context_length,
+                    truncation=True,
+                )["input_ids"]
+                for context in context_str
+            ]
+        else:
+            context_input_ids = self.tokenizer(
+                context_str,
+                max_length=self.context_length,
+                truncation=True,
+            )["input_ids"]
 
         processed_item = {
             "input_ids": input_ids,
@@ -230,6 +244,8 @@ class Collator:
             Dict[str, torch.Tensor]: Batches of decoder input tokens, encoder input tokens, and padding masks.
         """
 
+        is_chunked_ctx = isinstance(batch["context_input_ids"][0][0], list)
+
         input_ids_list = [el["input_ids"] for el in batch]
 
         processed_batch = self.tokenizer.pad(
@@ -239,19 +255,48 @@ class Collator:
             return_tensors="pt",
         )
 
-        context_input_ids_list = [el["context_input_ids"] for el in batch]
+        if is_chunked_ctx:
 
-        tokenized_context_ids = self.tokenizer.pad(
-            {"input_ids": context_input_ids_list},
-            max_length=self.maximum_length,
-            padding="longest",
-            return_tensors="pt",
-        )
+            context_input_is_chunk_list = [el["context_input_ids"] for el in batch]
+
+            chunk_length = len(context_input_is_chunk_list[0])
+
+            flat_context_input_ids_list = [
+                chunk for chunk_list in context_input_is_chunk_list for chunk in chunk_list
+            ]
+
+            tokenized_context_ids = self.tokenizer.pad(
+                {"input_ids": flat_context_input_ids_list},
+                max_length=self.maximum_length,
+                padding="longest",
+                return_tensors="pt",
+            )
+
+            context_input_ids = torch.chunk(
+                tokenized_context_ids["input_ids"], chunks=chunk_length
+            )
+            encoder_attention_mask = torch.chunk(
+                tokenized_context_ids["attention_mask"].float(), chunks=chunk_length
+            )
+
+        else:
+
+            context_input_ids_list = [el["context_input_ids"] for el in batch]
+
+            tokenized_context_ids = self.tokenizer.pad(
+                {"input_ids": context_input_ids_list},
+                max_length=self.maximum_length,
+                padding="longest",
+                return_tensors="pt",
+            )
+
+            context_input_ids = tokenized_context_ids["input_ids"]
+            encoder_attention_mask = tokenized_context_ids["attention_mask"].float()
 
         processed_batch.update(
             {
-                "context_input_ids": tokenized_context_ids["input_ids"],
-                "encoder_attention_mask": tokenized_context_ids["attention_mask"].float(),
+                "context_input_ids": context_input_ids,
+                "encoder_attention_mask": encoder_attention_mask,
             }  # Dropout will err if we use types of type Long
         )
 

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, List
 from datasets import Dataset
 
 from dssk.utils.hf_datasets import update_infodict
@@ -40,6 +40,52 @@ def cross_user_assistant_format(
     }
 
 
+def pre_post_q_format(
+    d: dict[str, Any],
+    pre_q_str: str,
+    post_q_str: str,
+    answered_example: bool,
+    return_context_list: bool,
+    eos_token: str = "",
+    **kwargs,
+) -> dict[str, Any]:
+    """For cross-attention models with a base decoder using a pre_q_str post_q_str template."""
+
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    else:
+        answer = ""
+
+    if return_context_list:
+        context_list, useful_context = get_context_list(d)
+        cross_input_str = [
+            f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}" for context in context_list
+        ]
+        cross_input_str_with_question = [
+            f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}"
+            for context in context_list
+        ]
+
+        useful_context = f"{pre_q_str}<|C|>{post_q_str}{useful_context}{eos_token}"
+    else:
+        context = get_single_context_with_trivial_strategy(d)
+        cross_input_str = f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}"
+        cross_input_str_with_question = (
+            f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}"
+        )
+        useful_context = f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}"
+
+    return {
+        "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
+        "no_answer_self_input_str": f"{pre_q_str}{d['question']}{post_q_str}",
+        "cross_input_str": cross_input_str,
+        "cross_input_str_with_question": cross_input_str_with_question,
+        "raw_answer": f"{answer}",  # Used for cross-validation
+        "useful_context": useful_context,
+    }
+
+
 def cross_uaf_question_in_context(
     d: dict[str, Any], answered_example: bool, eos_token: str = ""
 ) -> dict[str, Any]:
@@ -48,24 +94,21 @@ def cross_uaf_question_in_context(
     pre_q_str = "<|user|>\n"
     post_q_str = "\n<|assistant|>\n"
 
-    answer = d.get("answer", "")
-    if answered_example:
-        assert answer  # Both None and "" are illegal.
-    else:
-        answer = ""
-    context = get_single_context_with_trivial_strategy(d)
-    return {
-        "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
-        "cross_input_str": f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}",
-        "cross_input_str_with_question": f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}",
-        "no_answer_self_input_str": f"{pre_q_str}{d['question']}{post_q_str}",
-        "raw_answer": f"{answer}",  # Used for cross-validation
-    }
+    return pre_post_q_format(
+        d,
+        pre_q_str=pre_q_str,
+        post_q_str=post_q_str,
+        answered_example=answered_example,
+        eos_token=eos_token,
+        return_context_list=return_context_list,
+        **kwargs,
+    )
 
 
 def cross_instruct_question_in_context(
     d: dict[str, Any],
     answered_example: bool,
+    return_context_list: bool,
     eos_token: str = "",
     **kwargs,
 ) -> dict[str, Any]:
@@ -74,19 +117,15 @@ def cross_instruct_question_in_context(
     pre_q_str = "[INST] "
     post_q_str = " [/INST] "
 
-    answer = d.get("answer", "")
-    if answered_example:
-        assert answer  # Both None and "" are illegal.
-    else:
-        answer = ""
-    context = get_single_context_with_trivial_strategy(d)
-    return {
-        "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
-        "cross_input_str": f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}",
-        "cross_input_str_with_question": f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}",
-        "no_answer_self_input_str": f"{pre_q_str}{d['question']}{post_q_str}",
-        "raw_answer": f"{answer}",  # Used for cross-validation
-    }
+    return pre_post_q_format(
+        d,
+        pre_q_str=pre_q_str,
+        post_q_str=post_q_str,
+        answered_example=answered_example,
+        eos_token=eos_token,
+        return_context_list=return_context_list,
+        **kwargs,
+    )
 
 
 def tok_cut_cat_detok(
