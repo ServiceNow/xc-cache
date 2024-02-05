@@ -370,6 +370,7 @@ class CrossAttnMistral(MistralForCausalLM):
         cross_attn_skip_connections: bool = False,
         cache_dir: Optional[str] = None,
         max_len: int = -1,
+        include_questions_on_contexts: Optional[bool] = None,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
@@ -398,6 +399,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_instruct_question_in_context",
                 "max_len": max_len,
+                "include_questions_on_contexts": include_questions_on_contexts,
             }
         )
 
