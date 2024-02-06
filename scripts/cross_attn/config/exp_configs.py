@@ -3,6 +3,7 @@ BASE_CONFIG = {  # Base cfg with rough defaults. Values used for training must b
     "training_data_subset": "all",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
     "validation_data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
     "include_questions_on_contexts": True,  # Whether to prepend questions on contexts.
+    "chunked_contexts": False,  # Whether to use chunked rarther than concatenated contexts.
     "num_cross_attn_layers": 4,
     "cross_attn_layers_stride": 2,
     "cross_attn_shared_weights": True,

@@ -261,6 +261,7 @@ class Collator:
 
             chunk_length = len(context_input_is_chunk_list[0])
 
+            # Converts list of list of chunks into list of chunks.
             flat_context_input_ids_list = [
                 chunk for chunk_list in context_input_is_chunk_list for chunk in chunk_list
             ]
@@ -272,6 +273,7 @@ class Collator:
                 return_tensors="pt",
             )
 
+            # Back to list of chunks after tokenization.
             context_input_ids = torch.chunk(
                 tokenized_context_ids["input_ids"], chunks=chunk_length
             )
@@ -338,6 +340,7 @@ def data_prep(
     tokenizer_path: str,
     data_dir: str,
     context_length: int,
+    chunked_contexts: bool,
     training_data_subset: str = "all",
     validation_data_subset: str = "all",
     data_cache_dir: str = None,
@@ -352,6 +355,7 @@ def data_prep(
         tokenizer_path (str): Path to tokenizer.
         data_dir (str): Path to nq dataset.
         context_length (int): Maximum length of ids sequence.
+        chunked_contexts (bool): Whether to return chunks of contexts as opposed to a single larger concatenation of pieces of context.
         training_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
         validation_data_subset (str): Optional subset corresponding to one of the datasets used to compose the training data.
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
@@ -398,6 +402,7 @@ def data_prep(
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
         use_instruction_format=model_type == "mistral",
+        chunked_contexts=chunked_contexts,
         return_answers=False,
     )
     validation_dataset = DatasetWithContext(
@@ -407,6 +412,7 @@ def data_prep(
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
         use_instruction_format=model_type == "mistral",
+        chunked_contexts=chunked_contexts,
         return_answers=True,
     )
 
