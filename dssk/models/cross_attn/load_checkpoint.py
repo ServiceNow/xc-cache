@@ -22,6 +22,7 @@ CONFIG_KEYS_FORWARDED_TO_GET_MODEL = {
     "model_type",
     "max_len",
     "include_questions_on_contexts",
+    "chunked_contexts",
 }
 
 
