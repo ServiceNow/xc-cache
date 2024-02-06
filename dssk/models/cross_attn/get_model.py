@@ -30,6 +30,7 @@ def get_model(
     cache_dir: Optional[str] = None,
     max_len: int = -1,
     include_questions_on_contexts: Optional[bool] = None,
+    chunked_contexts: Optional[bool] = None,
 ) -> PreTrainedModel:
     """Helper function to get models..
     For models that are instances of GPTBigCodeForCausalLM, optionally
@@ -58,6 +59,7 @@ def get_model(
         cache_dir (Optional[str]): Optional path to store hf files for pretrained models.
         max_len: (int): Optional value of the maximum model length to be added to the model cfg. Useful for inference. Default -1 means "unset".
         include_questions_on_contexts (bool): Optional used here only to write a useful config file to facilitate inference.
+        chunked_contexts (Optional[float]): Used here only to add useful info to the model config. Indicates wether chunked (not concatenated) contexts are used.
     Returns:
         PreTrainedModel: Pre-trained model.
     """
@@ -83,6 +85,7 @@ def get_model(
                 cache_dir=cache_dir,
                 max_len=max_len,
                 include_questions_on_contexts=include_questions_on_contexts,
+                chunked_contexts=chunked_contexts,
             )
         elif model_type == "gptbigcode":
             model = CrossAttnGPTBigCode(
@@ -100,6 +103,7 @@ def get_model(
                 cache_dir=cache_dir,
                 max_len=max_len,
                 include_questions_on_contexts=include_questions_on_contexts,
+                chunked_contexts=chunked_contexts,
             )
         elif model_type == "mistral":
             model = CrossAttnMistral(
@@ -119,6 +123,7 @@ def get_model(
                 cache_dir=cache_dir,
                 max_len=max_len,
                 include_questions_on_contexts=include_questions_on_contexts,
+                chunked_contexts=chunked_contexts,
             )
         else:
             raise ValueError(f"Got unsupported model_type {model_type}.")
