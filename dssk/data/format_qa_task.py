@@ -10,9 +10,10 @@ def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
 
 
 def get_context_list(d: dict[str, Any]) -> List[str]:
-
     useful_contexts = [
-        d["contexts_list"][i] for i in range(len(d["contexts_list"])) if d["useful_contexts"][i] == 1
+        d["contexts_list"][i]
+        for i in range(len(d["contexts_list"]))
+        if d["useful_contexts"][i] == 1
     ]
 
     useful_contexts = " ".join(useful_contexts)
@@ -254,6 +255,39 @@ def tulu2_prompt_format_no_context(
     return tulu2_prompt_format(d, answered_example=answered_example, include_context=False)
 
 
+def llama_chat_prompt_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    """
+    Prompt for the Llama2 Chat model.
+
+    Based on https://github.com/McGill-NLP/instruct-qa/blob/b7bfb1744f6a6b066ba9dc88b5cc9cc571c4c5e9/instruct_qa/prompt/templates.py#L103,
+    with extra prompting to encourage shorter answers which can also be 'UNANSWERABLE'.
+    """
+    B_INST, E_INST = "[INST]", "[/INST]"
+    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
+
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    # Using just a space as the separator
+    combined_context = " ".join(context_text for context_text in d["contexts_list"])
+    input_str = (
+        B_INST
+        + " "
+        + B_SYS
+        + "Please answer the following question given the following passages. Please be as brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n"
+        + E_SYS
+        + f"{combined_context}\nQuestion: {d['question']}\n"
+        + E_INST
+        + "\nAnswer: "
+    )
+    if answered_example:
+        input_str = f"{input_str}{answer}"
+
+    return {"input_str": input_str}
+
+
 def fid_format(
     d: dict[str, Any],
     answered_example: bool,
@@ -305,6 +339,7 @@ KNOWN_QA_TASK_FORMATS = {
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
+    "prompt_llama_chat": llama_chat_prompt_format,
     "fid": fid_format,
 }
 
