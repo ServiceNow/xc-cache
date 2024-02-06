@@ -12,7 +12,7 @@ def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
 def get_context_list(d: dict[str, Any]) -> List[str]:
 
     useful_contexts = [
-        d["context_list"][i] for i in range(len(d["context_list"])) if d["useful_contexts"][i] == 1
+        d["contexts_list"][i] for i in range(len(d["contexts_list"])) if d["useful_contexts"][i] == 1
     ]
 
     useful_contexts = " ".join(useful_contexts)
