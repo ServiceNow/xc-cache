@@ -370,7 +370,7 @@ def data_prep(
     try:
         data = datasets.load_from_disk(data_dir)
     except FileNotFoundError:
-        data = datasets.load_dataset(data_dir, cache_dir=data_cache_dir)
+        data = datasets.load_dataset(data_dir, cache_dir=data_cache_dir, use_auth_token=True)
 
     training_data = data["train"]
     validation_data = data["val"]
