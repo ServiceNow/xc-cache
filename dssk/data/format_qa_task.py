@@ -280,6 +280,7 @@ KNOWN_QA_TASK_FORMATS = {
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
+    "prompt_llama_chat": llama_chat_prompt_format,
     "fid": fid_format,
 }
 
