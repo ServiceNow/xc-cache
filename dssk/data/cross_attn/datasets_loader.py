@@ -244,7 +244,7 @@ class Collator:
             Dict[str, torch.Tensor]: Batches of decoder input tokens, encoder input tokens, and padding masks.
         """
 
-        is_chunked_ctx = isinstance(batch["context_input_ids"][0][0], list)
+        is_chunked_ctx = isinstance(batch[0]["context_input_ids"][0], list)
 
         input_ids_list = [el["input_ids"] for el in batch]
 
