@@ -583,7 +583,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 encoder_attention_mask = torch.ones_like(context_ids)
 
             with torch.no_grad():
-                encoder_hidden_states = self.encode(
+                encoder_hidden_states, encoder_attention_mask = self.encode(
                     input_ids=context_ids,
                     attention_mask=encoder_attention_mask,
                 )
@@ -937,4 +937,4 @@ class CrossAttnLlama(LlamaForCausalLM):
                 attention_mask=attention_mask,
             ).last_hidden_state.detach()
 
-        return encoder_hidden_states
+        return encoder_hidden_states, attention_mask
