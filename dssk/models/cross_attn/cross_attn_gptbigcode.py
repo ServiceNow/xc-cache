@@ -327,6 +327,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         randomly_initialize_decoder: bool = False,
         cache_dir: Optional[str] = None,
         max_len: int = -1,
+        include_questions_on_contexts: Optional[bool] = None,
+        chunked_contexts: Optional[bool] = None,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
         with init_empty_weights():
@@ -351,6 +353,8 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_uaf_question_in_context",
                 "max_len": max_len,
+                "include_questions_on_contexts": include_questions_on_contexts,
+                "chunked_contexts": chunked_contexts,
             }
         )
 
@@ -502,10 +506,10 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 encoder_attention_mask = torch.ones_like(context_ids)
 
             with torch.no_grad():
-                encoder_hidden_states = self.transformer(
+                encoder_hidden_states, encoder_attention_mask = self.encode(
                     input_ids=context_ids,
                     attention_mask=encoder_attention_mask,
-                ).last_hidden_state.detach()
+                )
 
         model_inputs.update(
             {
@@ -836,3 +840,39 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
             return [hidden_states + cross_attn_outputs[0]]
 
         return cross_attn_outputs
+
+    def encode(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+
+        if isinstance(input_ids, list):
+            # If we get a list of contexts, we embed each context
+            # indepedently and concatenate afterward.
+
+            # Input_ids and att_mask are expected to be such that:
+            # [[B, T, D]]*num_chunks
+
+            num_chunks = len(input_ids)
+
+            input_ids = torch.cat(input_ids, dim=0)
+            cat_attention_mask = torch.cat(attention_mask, dim=0)
+
+            encoder_hidden_states = self.transformer(
+                input_ids=input_ids,
+                attention_mask=cat_attention_mask,
+            ).last_hidden_state.detach()
+
+            encoder_hidden_states = torch.cat(
+                torch.chunk(encoder_hidden_states, num_chunks, dim=0), dim=1
+            )
+            attention_mask = torch.cat(attention_mask, dim=1)
+
+        else:
+            encoder_hidden_states = self.transformer(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            ).last_hidden_state.detach()
+
+        return encoder_hidden_states, attention_mask

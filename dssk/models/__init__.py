@@ -1,3 +1,5 @@
+import os
+import json
 from typing import Optional
 
 __all__ = ["KNOWN_MODEL_TYPE", "get_model_string", "infer_model_type"]
@@ -21,7 +23,18 @@ def get_model_string(model_path: Optional[str] = None, model_ckpt: Optional[str]
         raise ValueError("One of model_path or model_ckpt must be specified.")
     if model_path is not None and model_ckpt is not None:
         raise ValueError("Only one of model_path or model_ckpt may be specified.")
-    return model_path if model_ckpt is None else model_ckpt
+
+    if model_ckpt is None:
+        return model_path
+    else:
+        # Check for model path within config.
+        try:
+            with open(os.path.join(model_ckpt, "config.json")) as f:
+                cfg = json.load(f)
+
+            return cfg["_name_or_path"]
+        except (FileNotFoundError, KeyError):
+            return model_ckpt
 
 
 def infer_model_type(model_path: Optional[str] = None, model_ckpt: Optional[str] = None) -> str:
