@@ -7,7 +7,8 @@ __all__ = ["KNOWN_MODEL_TYPE", "get_model_string", "infer_model_type"]
 # Associate model types with substrings that hint that this type may apply.
 KNOWN_MODEL_TYPE = {
     "fid": {"fid"},
-    "llama": {"llama", "tulu"},
+    "llama": {"llama"},
+    "tulu": {"tulu"},
     "mistral": {"mistral"},
     "gptbigcode": {"code"},
     "toto": set(),
