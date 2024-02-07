@@ -7,10 +7,7 @@ from torch.utils.data import Dataset
 from typing import List, Dict, Union, Optional
 
 from dssk.models.get_tokenizer import get_tokenizer
-from dssk.data.format_qa_task import (
-    cross_uaf_question_in_context,
-    cross_instruct_question_in_context,
-)
+from dssk.data.format_qa_task import get_cross_attn_model_format
 from dssk.models import infer_model_type
 
 
@@ -79,7 +76,7 @@ class DatasetWithContext(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         include_context_ids: bool,
         include_questions_on_contexts: bool,
-        use_instruction_format: bool,  # This should be set for instruction mistral variants.
+        model_type: str,  # should be a value in {"llama", "tulu", "mistral", "gptbicode"}.
         chunked_contexts: bool,  # Split chunks of context rather than concatenating.
         return_answers: bool = False,  # This should be set only for validation data.
     ) -> None:
@@ -101,10 +98,7 @@ class DatasetWithContext(Dataset):
         self.include_questions_on_contexts = include_questions_on_contexts
         self.chunked_contexts = chunked_contexts
 
-        if use_instruction_format:
-            self.formatter = cross_instruct_question_in_context
-        else:
-            self.formatter = cross_uaf_question_in_context
+        self.formatter = get_cross_attn_model_format(model_type)
 
         self.return_answers = return_answers
 
@@ -361,7 +355,7 @@ def data_prep(
         data_cache_dir (str): Optional hf path cache in case the dataset is not available in disk.
         include_context_ids (bool): Whether to include context ids in the training batch. Defaults to False.
         include_questions_on_contexts (bool): Whether to prepend questions on contexts fed to the encoder.
-        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "gpt_bigcode", "mistral"}.
+        model_type (Optional[str]): Which kind of model to instantiate. We currently support values in {"llama", "tulu", "mistral", "gptbicode"}.
 
     Returns:
         Union[List[Dataset], Dataset]: Processed datasets.
@@ -401,9 +395,9 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=include_context_ids,
         include_questions_on_contexts=include_questions_on_contexts,
-        use_instruction_format=model_type == "mistral",
         chunked_contexts=chunked_contexts,
         return_answers=False,
+        model_type=model_type,
     )
     validation_dataset = DatasetWithContext(
         validation_data,
@@ -411,9 +405,9 @@ def data_prep(
         tokenizer=tokenizer,
         include_context_ids=False,
         include_questions_on_contexts=include_questions_on_contexts,
-        use_instruction_format=model_type == "mistral",
         chunked_contexts=chunked_contexts,
         return_answers=True,
+        model_type=model_type,
     )
 
     return training_dataset, validation_dataset
