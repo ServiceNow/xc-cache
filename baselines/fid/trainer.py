@@ -36,7 +36,7 @@ class EvaluateCallback(TrainerCallback):
 
             additional_metrics = self.evaluator(model, eval_dataloader)
 
-            self._wandb.log(additional_metrics, step=state.global_step)
+            self._wandb.log(additional_metrics, step=state.global_step + 1)
 
 
 class FiDTrainer(Trainer):

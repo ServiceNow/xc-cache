@@ -4,6 +4,7 @@ import torch
 
 from transformers import EvalPrediction, T5Tokenizer
 from typing import Callable, Dict, Iterable, List, Tuple
+from tqdm import tqdm
 
 from dssk.metrics.generation.metrics import F1, EM
 
@@ -54,7 +55,7 @@ class GenEvaluator:
 
         model.eval()
         with torch.no_grad():
-            for inputs in data_loader:
+            for inputs in tqdm(data_loader):
                 labels_ids = inputs.pop("labels")
 
                 labels_ids = labels_ids.masked_fill(
