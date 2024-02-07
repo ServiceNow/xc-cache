@@ -276,7 +276,7 @@ def llama_chat_prompt_format(
         B_INST
         + " "
         + B_SYS
-        + "Please answer the following question given the following passages. Please be as brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n"
+        + "Please answer the following question given the following passages. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n"
         + E_SYS
         + f"{combined_context}\nQuestion: {d['question']}\n"
         + E_INST
