@@ -1,4 +1,4 @@
-from typing import Any, Optional, Iterable
+from typing import Any, Optional, Iterable, Sequence, Hashable
 from hashlib import sha256
 import contextlib
 import json
@@ -192,3 +192,37 @@ def merge_duplicated_rows(
     mdr.append({"columns_as_list": list(columns_as_list), "columns_as_csv": list(columns_as_csv)})
     update_infodict(out, {"merge_duplicated_rows": mdr}, allow_overwrite=True, source_ds=ds)
     return out
+
+
+def permute_like(
+    target: Sequence[Hashable], current: Sequence[Hashable], *args: Sequence[Any]
+) -> tuple[list[Any], ...]:
+    assert set(target) == set(current)  # Matching elements
+    lookup = {key: value for value, key in enumerate(current)}
+    assert len(lookup) == len(target)  # No repeated elements
+    permutation = tuple(lookup[key] for key in target)
+    return tuple(list(seq[key] for key in permutation) for seq in (current,) + args)
+
+
+def relocate_true(
+    target_relative_position: float, truthness: Sequence[Any], *args: Sequence[Any]
+) -> tuple[list[Any], ...]:
+    """Reorder sequences such that `truthness` has its 'true' values around specified relative position"""
+    # Figure out the right order
+    true_in_indices = tuple(i for i, t in enumerate(truthness) if t)
+    optimal_true_idx = float(target_relative_position) * (len(truthness) - 1)
+    true_out_candidates = sorted((abs(i - optimal_true_idx), i) for i in range(len(truthness)))
+    true_out_indices = tuple(pair[1] for pair in true_out_candidates[: len(true_in_indices)])
+    false_in_indices = tuple(i for i in range(len(truthness)) if i not in true_in_indices)
+    false_out_indices = tuple(i for i in range(len(truthness)) if i not in true_out_indices)
+    index_map = {
+        out_idx: in_idx
+        for in_idx, out_idx in zip(
+            true_in_indices + false_in_indices, true_out_indices + false_out_indices
+        )
+    }
+    order = tuple(index_map[i] for i in range(len(truthness)))
+
+    # Do the reordering
+    to_reorder = (truthness,) + args
+    return tuple(list(tr[i] for i in order) for tr in to_reorder)
