@@ -7,12 +7,12 @@ from torch.utils.data import DataLoader, SequentialSampler, Subset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import DataCollator, Trainer, TrainerCallback, TrainingArguments, T5Tokenizer
 
-from baselines.fid.metrics import GenEvaluator, build_compute_metrics_fn
+from baselines.fid.metrics import GenEvaluator
 from baselines.fid.options import Options
 from baselines.fid.src.datasets_loader import BatchSampler
 from baselines.fid.src.t5_wrapper import FiDT5
 
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 
 class EvaluateCallback(TrainerCallback):
@@ -50,7 +50,6 @@ class FiDTrainer(Trainer):
         opt: Options,
         train_dataset: Dataset,
         eval_dataset: Dataset,
-        compute_metrics_fn: Optional[Callable] = None,
         callbacks: Optional[TrainerCallback] = None,
     ):
         super(FiDTrainer, self).__init__(
@@ -59,7 +58,6 @@ class FiDTrainer(Trainer):
             args=args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            compute_metrics=compute_metrics_fn,
             callbacks=callbacks,
         )
 
@@ -165,8 +163,6 @@ def get_trainer(
         config=config,
     )
 
-    compute_metrics_fn = build_compute_metrics_fn(tokenizer)
-
     # instantiate FiD-T5 trainer
     trainer = FiDTrainer(
         model,
@@ -175,7 +171,6 @@ def get_trainer(
         opt=opt,
         train_dataset=training_data,
         eval_dataset=validation_data,
-        compute_metrics_fn=compute_metrics_fn,
         callbacks=[EvaluateCallback(tokenizer, wandb_run)],
     )
 
