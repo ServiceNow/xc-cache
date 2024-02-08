@@ -250,7 +250,6 @@ class Collator:
         )
 
         if is_chunked_ctx:
-
             context_input_is_chunk_list = [el["context_input_ids"] for el in batch]
 
             chunk_length = len(context_input_is_chunk_list[0])
@@ -276,7 +275,6 @@ class Collator:
             )
 
         else:
-
             context_input_ids_list = [el["context_input_ids"] for el in batch]
 
             tokenized_context_ids = self.tokenizer.pad(
