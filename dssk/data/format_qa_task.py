@@ -6,7 +6,6 @@ from dssk.data.utils.pre_processors import PosContextPreProcessor
 
 
 def get_cross_attn_model_format(model_type: str) -> Callable:
-
     if model_type == "llama":
         return cross_llama_chat_question_in_context
     if model_type == "tulu":

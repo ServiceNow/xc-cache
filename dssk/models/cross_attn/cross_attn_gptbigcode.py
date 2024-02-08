@@ -846,7 +846,6 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-
         if isinstance(input_ids, list):
             # If we get a list of contexts, we embed each context
             # indepedently and concatenate afterward.
