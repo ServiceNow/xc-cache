@@ -106,7 +106,7 @@ class CrossAttnInterface(AbstractLMInterface):
         if model_max_length is None:
             if hasattr(self.model.config, "max_len"):
                 model_max_length = self.model.config.max_len
-            if hasattr(self.model.config, "max_position_embeddings"):
+            elif hasattr(self.model.config, "max_position_embeddings"):
                 model_max_length = self.model.config.max_position_embeddings
             elif "wpe" in self.model.transformer:
                 model_max_length = self.model.transformer.wpe.num_embeddings
