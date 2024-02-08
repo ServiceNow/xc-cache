@@ -188,7 +188,9 @@ class CrossAttnInterface(AbstractLMInterface):
 
         num_input_tokens = len(features["input_ids"][0])
         try:
-            output_text = self.tokenizer.decode(output[0, num_input_tokens:])
+            output_text = self.tokenizer.decode(
+                output[0, num_input_tokens:], skip_special_tokens=True
+            )
             return {
                 "answer_pred": output_text,
                 "error": False,
