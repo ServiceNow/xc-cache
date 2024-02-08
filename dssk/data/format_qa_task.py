@@ -14,7 +14,7 @@ def get_cross_attn_model_format(model_type: str) -> Callable:
     if model_type == "mistral":
         return cross_instruct_question_in_context
     if model_type == "gptbigcode":
-        return cross_llama_chat_question_in_context
+        return cross_colon_format
 
     raise ValueError(f"Unkown model type: {model_type}")
 
@@ -441,6 +441,7 @@ def format_qa_task(
                 "include_context": include_context,
                 "tokenizer": tokenizer,
                 "max_length": max_length,
+                "return_context_list": kwargs.get("return_context_list", None),
             },
             load_from_cache_file=False,
         )
