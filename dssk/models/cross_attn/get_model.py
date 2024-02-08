@@ -67,7 +67,7 @@ def get_model(
         model_type = infer_model_type(model_path)
     model_type = model_type.lower().replace("_", "").replace("-", "")
     if n_cross_attn_layers > 0:
-        if model_type == "llama":
+        if model_type == "llama" or model_type == "tulu":
             model = CrossAttnLlama(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
