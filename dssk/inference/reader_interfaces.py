@@ -51,7 +51,6 @@ class CrossAttnInterface(AbstractLMInterface):
         model_peft_ckpt: Optional[str] = None,
         ds_config: Optional[str] = None,
         to_device: Optional[str] = None,
-        include_questions_on_contexts: bool = True,
         default_gen_args: Optional[dict[str, Any]] = None,
         **kwargs,  # Ignored
     ):
@@ -105,6 +104,8 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Handle max length
         if model_max_length is None:
+            if hasattr(self.model.config, "max_len"):
+                model_max_length = self.model.config.max_len
             if hasattr(self.model.config, "max_position_embeddings"):
                 model_max_length = self.model.config.max_position_embeddings
             elif "wpe" in self.model.transformer:
@@ -113,7 +114,19 @@ class CrossAttnInterface(AbstractLMInterface):
                 raise ValueError("Cannot automatically infer model_max_length.")
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
-        self.include_questions_on_contexts = include_questions_on_contexts
+        # Handle input format options
+        try:
+            self.include_questions_on_contexts = self.model.config.include_questions_on_contexts
+        except AttributeError:
+            # Cross-attn models trained before this field was added to the config were trained with
+            # questions on contexts, hence the default to True.
+            self.include_questions_on_contexts = True
+        try:
+            self.return_context_list = self.model.config.chunked_contexts
+        except AttributeError:
+            # Cross-attn models trained before this field was added to the config were trained with
+            # concatenated contexts, hence the default to False.
+            self.return_context_list = False
 
     @property
     def model_info(self) -> dict[str, Any]:
