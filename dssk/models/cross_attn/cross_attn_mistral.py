@@ -461,7 +461,7 @@ class CrossAttnMistral(MistralForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_ids=None, **kwargs
+        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
     ):
         """
         Prepare inputs for inference, which might require encoding the context.
@@ -500,7 +500,7 @@ class CrossAttnMistral(MistralForCausalLM):
         encoder_attention_mask = kwargs.get("encoder_attention_mask", None)
 
         if encoder_hidden_states is None:
-            if context_ids is None:
+            if context_input_ids is None:
                 raise ValueError(
                     "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
                 )
@@ -509,11 +509,11 @@ class CrossAttnMistral(MistralForCausalLM):
                 Warning(
                     "Missing 'encoder_attention_mask' argument: no padded attention mask is provided for the context. Setting it to default full mask."
                 )
-                encoder_attention_mask = torch.ones_like(context_ids)
+                encoder_attention_mask = torch.ones_like(context_input_ids)
 
             with torch.no_grad():
                 encoder_hidden_states, encoder_attention_mask = self.encode(
-                    input_ids=context_ids,
+                    input_ids=context_input_ids,
                     attention_mask=encoder_attention_mask,
                 )
 
@@ -564,6 +564,7 @@ class CrossAttnMistral(MistralForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        context_input_ids: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -575,6 +576,18 @@ class CrossAttnMistral(MistralForCausalLM):
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
+
+        if encoder_hidden_states is None:
+            if context_input_ids is None:
+                raise ValueError(
+                    "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
+                )
+
+            encoder_hidden_states, encoder_attention_mask = self.encode(
+                input_ids=context_input_ids,
+                attention_mask=encoder_attention_mask,
+            )
+
         output_hidden_states = (
             output_hidden_states
             if output_hidden_states is not None
