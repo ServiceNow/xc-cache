@@ -13,7 +13,7 @@ def get_cross_attn_model_format(model_type: str) -> Callable:
     if model_type == "mistral":
         return cross_instruct_question_in_context
     if model_type == "gptbigcode":
-        return cross_colon_format
+        return cross_uaf_question_in_context
 
     raise ValueError(f"Unkown model type: {model_type}")
 
@@ -170,11 +170,9 @@ def cross_llama_chat_question_in_context(
     """
     Prompt for the Llama2 model.
     """
-    B_INST, E_INST = "[INST]", "\n[/INST]\n"
-    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
 
-    pre_q_str = B_INST + " " + B_SYS + "You're an useful assistant.\n" + E_SYS
-    post_q_str = E_INST
+    pre_q_str = "<|user|>\n"
+    post_q_str = "\n<|assistant|>\n"
 
     return pre_post_q_format(
         d,
