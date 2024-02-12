@@ -101,10 +101,9 @@ class CrossAttnInterface(AbstractLMInterface):
             self.model = model
             self.model.eval()
             if to_device is not None:
+                if "LOCAL_RANK" in to_device:
+                    to_device = to_device.replace("LOCAL_RANK", os.environ.get("LOCAL_RANK", "0"))
                 self.model.to(to_device)
-            elif torch.cuda.is_available():
-                device = f"cuda:{os.environ.get('LOCAL_RANK', 0)}"
-                self.model.to(device)
 
         # Handle max length
         if model_max_length is None:
