@@ -10,58 +10,18 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
 import transformers
-from transformers.cache_utils import Cache
 from transformers.activations import ACT2FN
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
+    MistralRotaryEmbedding,
     MistralAttention,
     MistralForCausalLM,
     rotate_half,
     repeat_kv,
 )
 from accelerate import init_empty_weights
-
-
-class MistralRotaryEmbedding(nn.Module):
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
-        super().__init__()
-
-        self.dim = dim
-        self.max_position_embeddings = max_position_embeddings
-        self.base = base
-        inv_freq = 1.0 / (
-            self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim)
-        )
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-        # Build here to make `torch.jit.trace` work.
-        self._set_cos_sin_cache(
-            seq_len=max_position_embeddings,
-            device=self.inv_freq.device,
-            dtype=torch.get_default_dtype(),
-        )
-
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-
-        freqs = torch.outer(t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
-
-    def forward(self, x, seq_len=None):
-        # x: [bs, num_attention_heads, seq_len, head_size]
-        if seq_len > self.max_seq_len_cached:
-            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
-
-        return (
-            self.cos_cached[:seq_len].to(dtype=x.dtype),
-            self.sin_cached[:seq_len].to(dtype=x.dtype),
-        )
 
 
 def apply_rotary_pos_emb(q_or_k, cos, sin, position_ids, unsqueeze_dim=1):
@@ -110,8 +70,7 @@ class MLP(nn.Module):
 
 class MistralCrossAttention(MistralAttention):
     """
-    Multi-headed attention from 'Attention Is All You Need' paper. Modified to use sliding window attention: Longformer
-    and "Generating Long Sequences with Sparse Transformers".
+    Multi-headed attention from 'Attention Is All You Need' paper.
     """
 
     def __init__(self, config: MistralConfig, layer_idx: Optional[int] = None):
@@ -170,7 +129,7 @@ class MistralCrossAttention(MistralAttention):
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
         **kwargs,
@@ -179,6 +138,7 @@ class MistralCrossAttention(MistralAttention):
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
+
         bsz, q_len, _ = hidden_states.size()
         _, kv_seq_len, _ = encoder_hidden_states.size()
 
@@ -194,6 +154,7 @@ class MistralCrossAttention(MistralAttention):
             bsz, kv_seq_len, self.num_key_value_heads, self.head_dim
         ).transpose(1, 2)
 
+        # Kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
 
@@ -204,12 +165,12 @@ class MistralCrossAttention(MistralAttention):
         key_states = apply_rotary_pos_emb(key_states, kv_cos, kv_sin, position_ids)
 
         if past_key_value is not None:
-            cache_kwargs = {"sin": kv_sin, "cos": kv_cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(
-                key_states, value_states, self.layer_idx, cache_kwargs
-            )
+            # reuse k, v, self_attention
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-        # repeat k/v heads if n_kv_heads < n_heads
+        past_key_value = (key_states, value_states) if use_cache else None
+
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -249,7 +210,6 @@ class MistralCrossAttention(MistralAttention):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
-
             attn_weights = attn_weights + attention_mask
 
         # upcast attention to fp32
@@ -268,6 +228,7 @@ class MistralCrossAttention(MistralAttention):
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
+
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)
@@ -500,7 +461,7 @@ class CrossAttnMistral(MistralForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_ids=None, **kwargs
+        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
     ):
         """
         Prepare inputs for inference, which might require encoding the context.
@@ -539,7 +500,7 @@ class CrossAttnMistral(MistralForCausalLM):
         encoder_attention_mask = kwargs.get("encoder_attention_mask", None)
 
         if encoder_hidden_states is None:
-            if context_ids is None:
+            if context_input_ids is None:
                 raise ValueError(
                     "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
                 )
@@ -548,11 +509,11 @@ class CrossAttnMistral(MistralForCausalLM):
                 Warning(
                     "Missing 'encoder_attention_mask' argument: no padded attention mask is provided for the context. Setting it to default full mask."
                 )
-                encoder_attention_mask = torch.ones_like(context_ids)
+                encoder_attention_mask = torch.ones_like(context_input_ids)
 
             with torch.no_grad():
                 encoder_hidden_states, encoder_attention_mask = self.encode(
-                    input_ids=context_ids,
+                    input_ids=context_input_ids,
                     attention_mask=encoder_attention_mask,
                 )
 
@@ -603,6 +564,7 @@ class CrossAttnMistral(MistralForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        context_input_ids: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -614,6 +576,18 @@ class CrossAttnMistral(MistralForCausalLM):
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
+
+        if encoder_hidden_states is None:
+            if context_input_ids is None:
+                raise ValueError(
+                    "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
+                )
+
+            encoder_hidden_states, encoder_attention_mask = self.encode(
+                input_ids=context_input_ids,
+                attention_mask=encoder_attention_mask,
+            )
+
         output_hidden_states = (
             output_hidden_states
             if output_hidden_states is not None
@@ -866,7 +840,6 @@ class CrossAttnMistral(MistralForCausalLM):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-
         if isinstance(input_ids, list):
             # If we get a list of contexts, we embed each context
             # indepedently and concatenate afterward.

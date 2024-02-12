@@ -455,7 +455,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_ids=None, **kwargs
+        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
     ):
         """
         Prepare inputs for inference, which might require encoding the context.
@@ -494,7 +494,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         encoder_attention_mask = kwargs.get("encoder_attention_mask", None)
 
         if encoder_hidden_states is None:
-            if context_ids is None:
+            if context_input_ids is None:
                 raise ValueError(
                     "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
                 )
@@ -503,11 +503,11 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 Warning(
                     "Missing 'encoder_attention_mask' argument: no padded attention mask is provided for the context. Setting it to default full mask."
                 )
-                encoder_attention_mask = torch.ones_like(context_ids)
+                encoder_attention_mask = torch.ones_like(context_input_ids)
 
             with torch.no_grad():
                 encoder_hidden_states, encoder_attention_mask = self.encode(
-                    input_ids=context_ids,
+                    input_ids=context_input_ids,
                     attention_mask=encoder_attention_mask,
                 )
 
@@ -559,6 +559,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        context_input_ids: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -575,6 +576,18 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
             if output_hidden_states is not None
             else self.config.output_hidden_states
         )
+
+        if encoder_hidden_states is None:
+            if context_input_ids is None:
+                raise ValueError(
+                    "Either 'context_ids' with tokenized context or 'encoder_hidden_states' with encoded context must be passed to generate()."
+                )
+
+            encoder_hidden_states, encoder_attention_mask = self.encode(
+                input_ids=context_input_ids,
+                attention_mask=encoder_attention_mask,
+            )
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -846,7 +859,6 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-
         if isinstance(input_ids, list):
             # If we get a list of contexts, we embed each context
             # indepedently and concatenate afterward.

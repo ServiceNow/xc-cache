@@ -51,7 +51,6 @@ class CrossAttnInterface(AbstractLMInterface):
         model_peft_ckpt: Optional[str] = None,
         ds_config: Optional[str] = None,
         to_device: Optional[str] = None,
-        include_questions_on_contexts: bool = True,
         default_gen_args: Optional[dict[str, Any]] = None,
         **kwargs,  # Ignored
     ):
@@ -105,7 +104,9 @@ class CrossAttnInterface(AbstractLMInterface):
 
         # Handle max length
         if model_max_length is None:
-            if hasattr(self.model.config, "max_position_embeddings"):
+            if hasattr(self.model.config, "max_len"):
+                model_max_length = self.model.config.max_len
+            elif hasattr(self.model.config, "max_position_embeddings"):
                 model_max_length = self.model.config.max_position_embeddings
             elif "wpe" in self.model.transformer:
                 model_max_length = self.model.transformer.wpe.num_embeddings
@@ -113,7 +114,15 @@ class CrossAttnInterface(AbstractLMInterface):
                 raise ValueError("Cannot automatically infer model_max_length.")
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
-        self.include_questions_on_contexts = include_questions_on_contexts
+        # Handle input format options
+        # Cross-attn models trained before this field was added to the config were trained with
+        # questions on contexts, hence the default to True.
+        self.include_questions_on_contexts = getattr(
+            self.model.config, "include_questions_on_contexts", True
+        )
+        # Cross-attn models trained before this field was added to the config were trained with
+        # concatenated contexts, hence the default to False.
+        self.return_context_list = getattr(self.model.config, "chunked_contexts", False)
 
     @property
     def model_info(self) -> dict[str, Any]:
@@ -158,7 +167,7 @@ class CrossAttnInterface(AbstractLMInterface):
                     context_ids_list.append(context_fts["input_ids"])
                     encoder_attn_mask_list.append(context_fts["attention_mask"])
                 args |= {
-                    "context_ids": context_ids_list,
+                    "context_input_ids": context_ids_list,
                     "encoder_attention_mask": encoder_attn_mask_list,
                 }
             else:
@@ -166,7 +175,7 @@ class CrossAttnInterface(AbstractLMInterface):
                     [sample["cross_input_str"]], return_tensors="pt", truncation=True
                 ).to(self.model.device)
                 args |= {
-                    "context_ids": context_fts["input_ids"],
+                    "context_input_ids": context_fts["input_ids"],
                     "encoder_attention_mask": context_fts["attention_mask"],
                 }
 
@@ -175,7 +184,9 @@ class CrossAttnInterface(AbstractLMInterface):
 
         num_input_tokens = len(features["input_ids"][0])
         try:
-            output_text = self.tokenizer.decode(output[0, num_input_tokens:])
+            output_text = self.tokenizer.decode(
+                output[0, num_input_tokens:], skip_special_tokens=True
+            )
             return {
                 "answer_pred": output_text,
                 "error": False,

@@ -1,8 +1,21 @@
-from typing import Any, Optional, Sequence, List
+from typing import Any, Optional, Sequence, List, Callable
 from datasets import Dataset
 
 from dssk.utils.hf_datasets import update_infodict
 from dssk.data.utils.pre_processors import PosContextPreProcessor
+
+
+def get_cross_attn_model_format(model_type: str) -> Callable:
+    if model_type == "llama":
+        return cross_llama_chat_question_in_context
+    if model_type == "tulu":
+        return cross_uaf_question_in_context
+    if model_type == "mistral":
+        return cross_instruct_question_in_context
+    if model_type == "gptbigcode":
+        return cross_uaf_question_in_context
+
+    raise ValueError(f"Unkown model type: {model_type}")
 
 
 def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
@@ -64,6 +77,8 @@ def pre_post_q_format(
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a pre_q_str post_q_str template."""
 
+    ctx_id_ = "<|C|>"
+
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
@@ -71,23 +86,23 @@ def pre_post_q_format(
         answer = ""
 
     if return_context_list:
-        context_list, useful_context = get_context_list(d)
+        contexts_list, useful_contexts = get_context_list(d)
         cross_input_str = [
-            f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}" for context in context_list
+            f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}" for context in contexts_list
         ]
         cross_input_str_with_question = [
-            f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}"
-            for context in context_list
+            f"{pre_q_str}{d['question']}{ctx_id_}{post_q_str}{context}{eos_token}"
+            for context in contexts_list
         ]
 
-        useful_context = f"{pre_q_str}<|C|>{post_q_str}{useful_context}{eos_token}"
+        useful_contexts = f"{pre_q_str}{ctx_id_}{post_q_str}{useful_contexts}{eos_token}"
     else:
         context = get_single_context_with_trivial_strategy(d)
-        cross_input_str = f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}"
+        cross_input_str = f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}"
         cross_input_str_with_question = (
-            f"{pre_q_str}{d['question']}<|C|>{post_q_str}{context}{eos_token}"
+            f"{pre_q_str}{d['question']}{ctx_id_}{post_q_str}{context}{eos_token}"
         )
-        useful_context = f"{pre_q_str}<|C|>{post_q_str}{context}{eos_token}"
+        useful_contexts = f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}"
 
     return {
         "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
@@ -95,7 +110,7 @@ def pre_post_q_format(
         "cross_input_str": cross_input_str,
         "cross_input_str_with_question": cross_input_str_with_question,
         "raw_answer": f"{answer}",  # Used for cross-validation
-        "useful_context": useful_context,
+        "useful_contexts": useful_contexts,
     }
 
 
@@ -132,7 +147,32 @@ def cross_instruct_question_in_context(
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
 
     pre_q_str = "[INST] "
-    post_q_str = " [/INST] "
+    post_q_str = " [/INST] [INST] "
+
+    return pre_post_q_format(
+        d,
+        pre_q_str=pre_q_str,
+        post_q_str=post_q_str,
+        answered_example=answered_example,
+        eos_token=f" [/INST] {eos_token}",
+        return_context_list=return_context_list,
+        **kwargs,
+    )
+
+
+def cross_llama_chat_question_in_context(
+    d: dict[str, Any],
+    answered_example: bool,
+    return_context_list: bool,
+    eos_token: str = "",
+    **kwargs,
+) -> dict[str, Any]:
+    """
+    Prompt for the Llama2 model.
+    """
+
+    pre_q_str = "<|user|>\n"
+    post_q_str = "\n<|assistant|>\n"
 
     return pre_post_q_format(
         d,
@@ -335,6 +375,7 @@ KNOWN_QA_TASK_FORMATS = {
     "cross_uaf": cross_user_assistant_format,
     "cross_uaf_qic": cross_uaf_question_in_context,
     "cross_instruct_qic": cross_instruct_question_in_context,
+    "cross_llama_chat_qic": cross_llama_chat_question_in_context,
     "cross_uaf_cut_then_cat": cross_uaf_cut_then_cat,
     "prompt": system_user_assistant_prompt_format,
     "prompt_tulu2": tulu2_prompt_format,
@@ -397,6 +438,7 @@ def format_qa_task(
                 "include_context": include_context,
                 "tokenizer": tokenizer,
                 "max_length": max_length,
+                "return_context_list": kwargs.get("return_context_list", None),
             },
             load_from_cache_file=False,
         )

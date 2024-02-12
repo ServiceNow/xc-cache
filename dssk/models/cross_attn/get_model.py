@@ -20,7 +20,7 @@ def get_model(
     cross_attn_dropout_prob: Optional[float] = 0.0,
     cross_attn_final_layer: bool = False,
     cross_attn_shared_projections: bool = False,
-    cross_attn_hidden_size: [int] = None,
+    cross_attn_hidden_size: Optional[int] = None,
     cross_attn_num_attention_heads: Optional[int] = None,
     randomly_initialize_decoder: bool = False,
     model_type: Optional[str] = None,
@@ -67,7 +67,7 @@ def get_model(
         model_type = infer_model_type(model_path)
     model_type = model_type.lower().replace("_", "").replace("-", "")
     if n_cross_attn_layers > 0:
-        if model_type == "llama":
+        if model_type == "llama" or model_type == "tulu":
             model = CrossAttnLlama(
                 model_path,
                 n_cross_attn_layers=n_cross_attn_layers,
