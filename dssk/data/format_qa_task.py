@@ -60,23 +60,23 @@ def pre_post_q_format(
         answer = ""
 
     if return_context_list:
-        context_list, useful_context = get_context_list(d)
+        contexts_list, useful_contexts = get_context_list(d)
         cross_input_str = [
-            f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}" for context in context_list
+            f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}" for context in contexts_list
         ]
         cross_input_str_with_question = [
             f"{pre_q_str}{d['question']}{ctx_id_}{post_q_str}{context}{eos_token}"
-            for context in context_list
+            for context in contexts_list
         ]
 
-        useful_context = f"{pre_q_str}{ctx_id_}{post_q_str}{useful_context}{eos_token}"
+        useful_contexts = f"{pre_q_str}{ctx_id_}{post_q_str}{useful_contexts}{eos_token}"
     else:
         context = get_single_context_with_trivial_strategy(d)
         cross_input_str = f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}"
         cross_input_str_with_question = (
             f"{pre_q_str}{d['question']}{ctx_id_}{post_q_str}{context}{eos_token}"
         )
-        useful_context = f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}"
+        useful_contexts = f"{pre_q_str}{ctx_id_}{post_q_str}{context}{eos_token}"
 
     return {
         "self_input_str": f"{pre_q_str}{d['question']}{post_q_str}{answer}{eos_token}",
@@ -84,7 +84,7 @@ def pre_post_q_format(
         "cross_input_str": cross_input_str,
         "cross_input_str_with_question": cross_input_str_with_question,
         "raw_answer": f"{answer}",  # Used for cross-validation
-        "useful_context": useful_context,
+        "useful_contexts": useful_contexts,
     }
 
 
