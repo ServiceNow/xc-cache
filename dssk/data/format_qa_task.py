@@ -296,7 +296,10 @@ def tulu2_prompt_format_no_context(
 
 
 def llama_chat_prompt_format(
-    d: dict[str, Any], answered_example: bool, **kwargs
+    d: dict[str, Any],
+    answered_example: bool,
+    instruction_str: str = "Please answer the following question given the following passages. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n",
+    **kwargs,
 ) -> dict[str, Any]:
     """
     Prompt for the Llama2 Chat model.
@@ -316,7 +319,7 @@ def llama_chat_prompt_format(
         B_INST
         + " "
         + B_SYS
-        + "Please answer the following question given the following passages. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n"
+        + instruction_str
         + E_SYS
         + f"{combined_context}\nQuestion: {d['question']}\n"
         + E_INST
@@ -326,6 +329,20 @@ def llama_chat_prompt_format(
         input_str = f"{input_str}{answer}"
 
     return {"input_str": input_str}
+
+
+def llama_lora_chat_prompt_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    """
+    This is the version of the prompt which was used in research-RTLM to finetune the Llama Chat model.
+    """
+    return llama_chat_prompt_format(
+        d=d,
+        answered_example=answered_example,
+        instruction_str="You're an useful assistant.\n",
+        **kwargs,
+    )
 
 
 def fid_format(
@@ -381,6 +398,7 @@ KNOWN_QA_TASK_FORMATS = {
     "prompt_tulu2": tulu2_prompt_format,
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "prompt_llama_chat": llama_chat_prompt_format,
+    "prompt_llama_lora_chat": llama_lora_chat_prompt_format,
     "fid": fid_format,
 }
 
