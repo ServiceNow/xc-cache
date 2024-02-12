@@ -171,7 +171,7 @@ class CrossAttnInterface(AbstractLMInterface):
                     context_ids_list.append(context_fts["input_ids"])
                     encoder_attn_mask_list.append(context_fts["attention_mask"])
                 args |= {
-                    "context_ids": context_ids_list,
+                    "context_input_ids": context_ids_list,
                     "encoder_attention_mask": encoder_attn_mask_list,
                 }
             else:
@@ -179,7 +179,7 @@ class CrossAttnInterface(AbstractLMInterface):
                     [sample["cross_input_str"]], return_tensors="pt", truncation=True
                 ).to(self.model.device)
                 args |= {
-                    "context_ids": context_fts["input_ids"],
+                    "context_input_ids": context_fts["input_ids"],
                     "encoder_attention_mask": context_fts["attention_mask"],
                 }
 
