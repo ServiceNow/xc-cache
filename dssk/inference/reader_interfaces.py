@@ -115,18 +115,14 @@ class CrossAttnInterface(AbstractLMInterface):
         self.tokenizer.model_max_length = model_max_length - max_new_tokens
 
         # Handle input format options
-        try:
-            self.include_questions_on_contexts = self.model.config.include_questions_on_contexts
-        except AttributeError:
-            # Cross-attn models trained before this field was added to the config were trained with
-            # questions on contexts, hence the default to True.
-            self.include_questions_on_contexts = True
-        try:
-            self.return_context_list = self.model.config.chunked_contexts
-        except AttributeError:
-            # Cross-attn models trained before this field was added to the config were trained with
-            # concatenated contexts, hence the default to False.
-            self.return_context_list = False
+        # Cross-attn models trained before this field was added to the config were trained with
+        # questions on contexts, hence the default to True.
+        self.include_questions_on_contexts = getattr(
+            self.model.config, "include_questions_on_contexts", True
+        )
+        # Cross-attn models trained before this field was added to the config were trained with
+        # concatenated contexts, hence the default to False.
+        self.return_context_list = getattr(self.model.config, "chunked_contexts", False)
 
     @property
     def model_info(self) -> dict[str, Any]:
