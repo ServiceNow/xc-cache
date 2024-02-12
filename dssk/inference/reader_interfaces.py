@@ -1,3 +1,4 @@
+import os
 import json
 from typing import Any, Optional
 
@@ -101,6 +102,9 @@ class CrossAttnInterface(AbstractLMInterface):
             self.model.eval()
             if to_device is not None:
                 self.model.to(to_device)
+            elif torch.cuda.is_available():
+                device = f"cuda:{os.environ.get('LOCAL_RANK', 0)}"
+                self.model.to(device)
 
         # Handle max length
         if model_max_length is None:
