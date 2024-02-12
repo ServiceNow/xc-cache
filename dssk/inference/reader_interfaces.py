@@ -1,3 +1,4 @@
+import os
 import json
 from typing import Any, Optional
 
@@ -100,6 +101,8 @@ class CrossAttnInterface(AbstractLMInterface):
             self.model = model
             self.model.eval()
             if to_device is not None:
+                if "LOCAL_RANK" in to_device:
+                    to_device = to_device.replace("LOCAL_RANK", os.environ.get("LOCAL_RANK", "0"))
                 self.model.to(to_device)
 
         # Handle max length
