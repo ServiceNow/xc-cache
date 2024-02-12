@@ -146,7 +146,7 @@ class DatasetWithContext(Dataset):
         )
 
         if use_context:
-            input_str = formatted_example["useful_context"]
+            input_str = formatted_example["useful_contexts"]
         else:
             input_str = formatted_example["self_input_str"]
 
