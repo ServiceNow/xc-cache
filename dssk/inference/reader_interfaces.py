@@ -12,6 +12,8 @@ from dssk.models.cross_attn.load_checkpoint import load_checkpoint
 from dssk.inference.abstract_lm_interface import AbstractLMInterface
 from dssk.models.toto import toto
 
+from safetensors.torch import load_file as load_safetensors
+
 
 def _setup_peft_model(
     model: PreTrainedModel, peft_config: dict[str, Any], model_peft_ckpt: str
@@ -27,7 +29,11 @@ def _setup_peft_model(
 
     model = peft.get_peft_model(model, peft_config)
 
-    adapters_weights = torch.load(model_peft_ckpt, map_location="cpu")
+    if model_peft_ckpt.endswith(".safetensors"):
+        adapters_weights = load_safetensors(model_peft_ckpt, device="cpu")
+    else:
+        adapters_weights = torch.load(model_peft_ckpt, map_location="cpu")
+
     _ = peft.set_peft_model_state_dict(model, adapters_weights)
 
     # Make sure the extra model parts from PEFT are also in evaluation mode
