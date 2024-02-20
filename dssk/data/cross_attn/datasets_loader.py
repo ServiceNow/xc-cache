@@ -141,7 +141,6 @@ class DatasetWithContext(Dataset):
         formatted_example = self.formatter(
             self.train_dataset[example_idx],
             answered_example=True,
-            eos_token=self.tokenizer.eos_token,
             return_context_list=self.chunked_contexts,
         )
 
