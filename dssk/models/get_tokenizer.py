@@ -23,4 +23,6 @@ def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
     if pad_token is None:
         tokenizer.add_special_tokens({"pad_token": tokenizer.bos_token})
 
+    tokenizer.add_eos_token = True  # Allow the model to learn how to stop its output
+
     return tokenizer
