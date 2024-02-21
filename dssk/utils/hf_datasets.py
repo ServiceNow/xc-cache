@@ -207,7 +207,28 @@ def permute_like(
 def relocate_true(
     target_relative_position: float, truthness: Sequence[Any], *args: Sequence[Any]
 ) -> tuple[list[Any], ...]:
-    """Reorder sequences such that `truthness` has its 'true' values around specified relative position"""
+    """Reorder sequences such that `truthness` has its 'true' values around specified `target_relative_position`
+
+    If `target_relative_position == 0`, all 'true' values will clump at the beginning of the sequence. If `target_relative_position == 1`, all 'true' values will clump at the end of the sequence. Intermediate values are interpolated to an `optimal_true_idx`, which may be fractional. The actual position of the 'true' values is determined by minimizing the distance between valid discrete indices and this ideal 'optimal_true_idx'.
+
+    The 'truthness' sequence specifies the positions of those 'true' values. Any entry that python understands as 'true' (e.g., `True`, `1`, `"non-empty string"`) will be clumped around `optimal_true_idx`, and everything else (e.g., `False`, `0`, `""`) will otherwise keep its previous relative ordering. If there are no 'true' value, then no reordering is performed.
+
+    More sequences may be passed through `args`: those sequences will undergo the same reodering as the corresponding truthness.
+
+    The following doctest shows how to apply the same reordering to three sequences such that the first of these sequences has 'true' values clump toward the middle of the sequence. Notice that all sequences are returned as lists.
+    >>> relocate_true(0.5, [True, False, True, False], [0, 1, 2, 3], "abcd")
+    ([False, True, True, False], [1, 0, 2, 3], ['b', 'a', 'c', 'd'])
+
+    The following doctest does the same, but clumping 'true' values at the end of the first sequence. Notice that, while we guarantee that the ordering is preserved for the 'false' values, there is no such guarantee for 'true' ones.
+    >>> relocate_true(1.0, [True, False, True, False], [0, 1, 2, 3], "abcd")
+    ([False, False, True, True], [1, 3, 2, 0], ['b', 'd', 'c', 'a'])
+
+    The following doctest shows that no reordering is performed if there are no 'true' values.
+    >>> relocate_true(0.5, [False, False, False, False], [0, 1, 2, 3], "abcd")
+    ([False, False, False, False], [0, 1, 2, 3], ['a', 'b', 'c', 'd'])
+    """
+    assert 0 <= target_relative_position <= 1
+    assert all(len(arg) == len(truthness) for arg in args)
     # Figure out the right order
     true_in_indices = tuple(i for i, t in enumerate(truthness) if t)
     optimal_true_idx = float(target_relative_position) * (len(truthness) - 1)
@@ -226,3 +247,9 @@ def relocate_true(
     # Do the reordering
     to_reorder = (truthness,) + args
     return tuple(list(tr[i] for i in order) for tr in to_reorder)
+
+
+if __name__ == "__main__":
+    import doctest
+
+    doctest.testmod()
