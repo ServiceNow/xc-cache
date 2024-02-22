@@ -47,16 +47,17 @@ class BatchSampler(Sampler):
         # list of counters of sampled data by sampler to keep track of when they are exhausted
         remaining = [len(sampler) for sampler in self.samplers]
 
+        # list of iterators over shuffled datasets
+        iterators = [sampler.__iter__() for sampler in self.samplers]
+
         # extra security: the dataloader that calls this batchsampler should stop after sampling self.__len__() data
         while all([r >= self.batch_size for r in remaining]):
             # sequentially sample from each dataset
-            for i, sampler in enumerate(self.samplers):
-                # skip sampler if it doe not have enough data for a full batch
-                if remaining[i] >= self.batch_size:
-                    # change sampler when a full batch has been sampled
-                    for _ in range(self.batch_size):
-                        remaining[i] -= 1
-                        yield next(sampler.__iter__())
+            for i, iterator in enumerate(iterators):
+                # change iterator when a full batch has been sampled
+                for _ in range(self.batch_size):
+                    remaining[i] -= 1
+                    yield next(iterator)
 
     def __len__(self):
         """Accounts for data that is dropped by each sampler as it cannot form a full batch
@@ -65,8 +66,10 @@ class BatchSampler(Sampler):
             int: number of sampled data
         """
 
-        return self.batch_size * sum(
-            [len(sampler) // self.batch_size for sampler in self.samplers]
+        return (
+            self.batch_size
+            * len(self.dataset_names)
+            * min([len(sampler) // self.batch_size for sampler in self.samplers])
         )
 
 
@@ -90,8 +93,10 @@ def encode_passages(batch_text_passages, tokenizer, text_maxlength=None):
         max_n_tokens = max(max_n_tokens, p["attention_mask"].shape[1])
 
     # number of contexts may vary within a batch. Need to pad that dimension
-    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(0)
-    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(0)
+    passage_ids = torch.nested.nested_tensor(passage_ids).to_padded_tensor(tokenizer.pad_token_id)
+    passage_masks = torch.nested.nested_tensor(passage_masks).to_padded_tensor(
+        tokenizer.pad_token_id
+    )
 
     # log statistics
     logger.debug(

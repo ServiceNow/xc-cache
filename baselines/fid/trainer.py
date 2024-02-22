@@ -5,13 +5,38 @@ import wandb
 from datasets import Dataset
 from torch.utils.data import DataLoader, SequentialSampler, Subset
 from torch.utils.data.distributed import DistributedSampler
-from transformers import DataCollator, Trainer, TrainerCallback, TrainingArguments
+from transformers import DataCollator, Trainer, TrainerCallback, TrainingArguments, T5Tokenizer
 
-from baselines.fid.src.datasets_loader import BatchSampler
+from baselines.fid.metrics import GenEvaluator
 from baselines.fid.options import Options
+from baselines.fid.src.datasets_loader import BatchSampler
 from baselines.fid.src.t5_wrapper import FiDT5
 
-from typing import Optional, Dict
+from typing import Dict, Optional
+
+
+class EvaluateCallback(TrainerCallback):
+    """Callback to evaluate before starting training and to log generation metrics to wandb"""
+
+    def __init__(self, tokenizer, wandb_run):
+        super().__init__()
+
+        self.evaluator = GenEvaluator(tokenizer)
+        self._wandb = wandb_run
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        if state.global_step == 0:
+            control.should_evaluate = True
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        # only main process log generation metrics
+        if state.is_world_process_zero:
+            model = kwargs.pop("model")
+            eval_dataloader = kwargs.pop("eval_dataloader")
+
+            additional_metrics = self.evaluator(model, eval_dataloader)
+
+            self._wandb.log(additional_metrics, step=state.global_step + 1)
 
 
 class FiDTrainer(Trainer):
@@ -103,13 +128,14 @@ class FiDTrainer(Trainer):
 
 def get_trainer(
     model: FiDT5,
+    tokenizer: T5Tokenizer,
     data_collator: DataCollator,
     opt: Options,
     training_args: TrainingArguments,
     training_data: Dataset,
     validation_data: Dataset,
 ) -> Trainer:
-    """Intanstiates Trainer object.
+    """Instantiates Trainer object.
 
     Args:
         model (FiDT5): Model to be trained.
@@ -130,7 +156,7 @@ def get_trainer(
             config[k] = value
 
     # init wandb logger
-    wandb.init(
+    wandb_run = wandb.init(
         name=None,
         project=opt.name,
         mode="disabled" if opt.debug or opt.local_rank > 0 else None,  # no logging while debugging
@@ -145,6 +171,7 @@ def get_trainer(
         opt=opt,
         train_dataset=training_data,
         eval_dataset=validation_data,
+        callbacks=[EvaluateCallback(tokenizer, wandb_run)],
     )
 
     return trainer
