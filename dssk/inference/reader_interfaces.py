@@ -121,7 +121,7 @@ class CrossAttnInterface(AbstractLMInterface):
                 model_max_length = self.model.transformer.wpe.num_embeddings
             else:
                 raise ValueError("Cannot automatically infer model_max_length.")
-        self.tokenizer.model_max_length = model_max_length - max_new_tokens
+        self.tokenizer.model_max_length = model_max_length
 
         # Handle input format options
         # Cross-attn models trained before this field was added to the config were trained with
@@ -152,7 +152,12 @@ class CrossAttnInterface(AbstractLMInterface):
         args = self.default_gen_args.copy()
         args.update(gen_args)
 
-        input_str = sample["self_input_str"] if "self_input_str" in sample else sample["input_str"]
+        if "no_answer_self_input_str" in sample:
+            input_str = sample["no_answer_self_input_str"]
+        elif "self_input_str" in sample:
+            input_str = sample["self_input_str"]
+        else:
+            input_str = sample["input_str"]
 
         # Input features that will be self-attended to.
         features = self.tokenizer([input_str], return_tensors="pt", truncation=True).to(

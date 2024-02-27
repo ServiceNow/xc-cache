@@ -54,9 +54,9 @@ def load_checkpoint(ckp_path, device="cpu"):
     # load weights from checkpoint (might be split into multiple files)
     checkpoint = {}
     # Only one of the following two `for` loops will do something.
-    for p in glob(os.path.join(ckp_path, "pytorch_model-*.bin")):
+    for p in glob(os.path.join(ckp_path, "pytorch_model*.bin")):
         checkpoint |= torch.load(p, map_location=torch.device(device))
-    for p in glob(os.path.join(ckp_path, "model-*.safetensors")):
+    for p in glob(os.path.join(ckp_path, "model*.safetensors")):
         checkpoint |= load_safetensors(p, device=device)
 
     model.load_state_dict(checkpoint)
