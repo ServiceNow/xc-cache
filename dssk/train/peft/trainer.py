@@ -44,11 +44,7 @@ def get_trainer(
 ):
     """Intanstiates Trainer object."""
 
-    is_first_process = True
-    if torch.distributed.is_initialized():
-        is_first_process = torch.distributed.get_rank() == 0
-
-    if is_first_process and wandb_entity_name is not None and wandb_project_name is not None:
+    if wandb_entity_name is not None and wandb_project_name is not None:
         import wandb
 
         try:
