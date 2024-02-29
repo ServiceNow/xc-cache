@@ -200,7 +200,9 @@ class DatasetWithContext(Dataset):
                 max_length=self.context_length,
                 truncation=True,
             )["input_ids"]
-            processed_item["no_answer_input_ids"] = no_answer_input_ids
+            # We drop the <eos> token of "no_answer_input_ids" since it's
+            # used for generation evaluation.
+            processed_item["no_answer_input_ids"] = no_answer_input_ids[:-1]
             processed_item["raw_answer"] = formatted_example["raw_answer"]
 
         return processed_item
