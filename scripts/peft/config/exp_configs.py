@@ -18,6 +18,7 @@ BASE_CONFIG = {
     "load_in_8bit": False,
     "n_workers": 2,
     "model_type": "llama",  # Only relevant for cross-attn models. Set in the specific config below if using a gptbicode, tulu, or mistral variant.
+    "gradient_checkpointing": True,
 }
 
 MODEL_CONFIGS = {
