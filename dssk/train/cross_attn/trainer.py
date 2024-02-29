@@ -92,7 +92,7 @@ def get_trainer(
                 entity=wandb_entity_name,
                 project=wandb_project_name,
             )
-        except:  # noqa: E722 do not use bare 'except'
+        except wandb.AuthenticationError:
             with open("keys", "r") as f:
                 key = f.read()
             wandb.login(key=key)
