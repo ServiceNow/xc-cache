@@ -1,4 +1,4 @@
-from typing import Any, Optional, Iterable
+from typing import Any, Optional, Iterable, Sequence, Hashable
 from hashlib import sha256
 import contextlib
 import json
@@ -192,3 +192,64 @@ def merge_duplicated_rows(
     mdr.append({"columns_as_list": list(columns_as_list), "columns_as_csv": list(columns_as_csv)})
     update_infodict(out, {"merge_duplicated_rows": mdr}, allow_overwrite=True, source_ds=ds)
     return out
+
+
+def permute_like(
+    target: Sequence[Hashable], current: Sequence[Hashable], *args: Sequence[Any]
+) -> tuple[list[Any], ...]:
+    assert set(target) == set(current)  # Matching elements
+    lookup = {key: value for value, key in enumerate(current)}
+    assert len(lookup) == len(target)  # No repeated elements
+    permutation = tuple(lookup[key] for key in target)
+    return tuple(list(seq[key] for key in permutation) for seq in (current,) + args)
+
+
+def relocate_true(
+    target_relative_position: float, truthness: Sequence[Any], *args: Sequence[Any]
+) -> tuple[list[Any], ...]:
+    """Reorder sequences such that `truthness` has its 'true' values around specified `target_relative_position`
+
+    If `target_relative_position == 0`, all 'true' values will clump at the beginning of the sequence. If `target_relative_position == 1`, all 'true' values will clump at the end of the sequence. Intermediate values are interpolated to an `optimal_true_idx`, which may be fractional. The actual position of the 'true' values is determined by minimizing the distance between valid discrete indices and this ideal 'optimal_true_idx'.
+
+    The 'truthness' sequence specifies the positions of those 'true' values. Any entry that python understands as 'true' (e.g., `True`, `1`, `"non-empty string"`) will be clumped around `optimal_true_idx`, and everything else (e.g., `False`, `0`, `""`) will otherwise keep its previous relative ordering. If there are no 'true' value, then no reordering is performed.
+
+    More sequences may be passed through `args`: those sequences will undergo the same reodering as the corresponding truthness.
+
+    The following doctest shows how to apply the same reordering to three sequences such that the first of these sequences has 'true' values clump toward the middle of the sequence. Notice that all sequences are returned as lists.
+    >>> relocate_true(0.5, [True, False, True, False], [0, 1, 2, 3], "abcd")
+    ([False, True, True, False], [1, 0, 2, 3], ['b', 'a', 'c', 'd'])
+
+    The following doctest does the same, but clumping 'true' values at the end of the first sequence. Notice that, while we guarantee that the ordering is preserved for the 'false' values, there is no such guarantee for 'true' ones.
+    >>> relocate_true(1.0, [True, False, True, False], [0, 1, 2, 3], "abcd")
+    ([False, False, True, True], [1, 3, 2, 0], ['b', 'd', 'c', 'a'])
+
+    The following doctest shows that no reordering is performed if there are no 'true' values.
+    >>> relocate_true(0.5, [False, False, False, False], [0, 1, 2, 3], "abcd")
+    ([False, False, False, False], [0, 1, 2, 3], ['a', 'b', 'c', 'd'])
+    """
+    assert 0 <= target_relative_position <= 1
+    assert all(len(arg) == len(truthness) for arg in args)
+    # Figure out the right order
+    true_in_indices = tuple(i for i, t in enumerate(truthness) if t)
+    optimal_true_idx = float(target_relative_position) * (len(truthness) - 1)
+    true_out_candidates = sorted((abs(i - optimal_true_idx), i) for i in range(len(truthness)))
+    true_out_indices = tuple(pair[1] for pair in true_out_candidates[: len(true_in_indices)])
+    false_in_indices = tuple(i for i in range(len(truthness)) if i not in true_in_indices)
+    false_out_indices = tuple(i for i in range(len(truthness)) if i not in true_out_indices)
+    index_map = {
+        out_idx: in_idx
+        for in_idx, out_idx in zip(
+            true_in_indices + false_in_indices, true_out_indices + false_out_indices
+        )
+    }
+    order = tuple(index_map[i] for i in range(len(truthness)))
+
+    # Do the reordering
+    to_reorder = (truthness,) + args
+    return tuple(list(tr[i] for i in order) for tr in to_reorder)
+
+
+if __name__ == "__main__":
+    import doctest
+
+    doctest.testmod()
