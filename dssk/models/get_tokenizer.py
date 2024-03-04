@@ -1,11 +1,15 @@
+from typing import Optional
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
-def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
+def get_tokenizer(
+    model_path: str, add_eos_token: Optional[bool] = None
+) -> PreTrainedTokenizerFast:
     """Helper function to get tokenizer and add missing special tokens.
 
     Args:
         model_path (str): Local path or huggingface hub id.
+        add_eos_token (Optional[bool]): Whether the tokenizer should append the eos token.
 
     Returns:
         PreTrainedTokenizerFast: Pre-trained tokenizer.
@@ -23,6 +27,7 @@ def get_tokenizer(model_path: str) -> PreTrainedTokenizerFast:
     if pad_token is None:
         tokenizer.add_special_tokens({"pad_token": tokenizer.bos_token})
 
-    tokenizer.add_eos_token = True  # Allow the model to learn how to stop its output
+    if add_eos_token is not None:
+        tokenizer.add_eos_token = add_eos_token
 
     return tokenizer
