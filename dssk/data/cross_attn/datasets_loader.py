@@ -381,9 +381,7 @@ def data_prep(
     # We shuffle validation data since we subsample it for evaluations that require generation.
     validation_data = validation_data.shuffle()
 
-    tokenizer = get_tokenizer(
-        tokenizer_path,
-    )
+    tokenizer = get_tokenizer(tokenizer_path, add_eos_token=True)
 
     if model_type is None:
         model_type = infer_model_type(tokenizer_path)
