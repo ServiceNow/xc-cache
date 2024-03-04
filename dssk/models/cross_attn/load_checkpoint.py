@@ -39,7 +39,7 @@ def load_checkpoint(ckp_path, device="cpu"):
     }
 
     # load standard tokenizer
-    tokenizer = get_tokenizer(config["_name_or_path"])
+    tokenizer = get_tokenizer(config["_name_or_path"], add_eos_token=True)
 
     # instantiate model
     model = get_model(

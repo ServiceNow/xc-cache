@@ -456,7 +456,6 @@ def format_qa_task(
                 "include_context": include_context,
                 "tokenizer": tokenizer,
                 "max_length": max_length,
-                "eos_token": tokenizer.eos_token,
                 "return_context_list": kwargs.get("return_context_list", None),
             },
             load_from_cache_file=False,
