@@ -16,6 +16,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils.import_utils import is_torch_fx_available
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
@@ -36,16 +37,13 @@ if is_torch_fx_available():
 ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm)
 
 
-def apply_rotary_pos_emb(q_or_k, cos, sin, position_ids, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q_or_k, cos, sin, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to either query or key tensors.
 
     Args:
         q_or_k (`torch.Tensor`): The query or k tensor.
         cos (`torch.Tensor`): The cosine part of the rotary embedding.
         sin (`torch.Tensor`): The sine part of the rotary embedding.
-        position_ids (`torch.Tensor`):
-            The position indices of the tokens corresponding to the query and key tensors. For example, this can be
-            used to pass offsetted position ids when working with a KV-cache.
         unsqueeze_dim (`int`, *optional*, defaults to 1):
             The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
             sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
@@ -56,8 +54,8 @@ def apply_rotary_pos_emb(q_or_k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    cos = cos.unsqueeze(unsqueeze_dim)
+    sin = sin.unsqueeze(unsqueeze_dim)
     q_or_k_embed = (q_or_k * cos) + (rotate_half(q_or_k) * sin)
     return q_or_k_embed
 
@@ -160,6 +158,7 @@ class LlamaCrossAttention(LlamaAttention):
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
+        cross_attn_position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
@@ -217,11 +216,11 @@ class LlamaCrossAttention(LlamaAttention):
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
 
-        q_cos, q_sin = self.rotary_emb(query_states, seq_len=q_len)
-        kv_cos, kv_sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        q_cos, q_sin = self.rotary_emb(query_states, position_ids)
+        kv_cos, kv_sin = self.rotary_emb(value_states, cross_attn_position_ids)
 
-        query_states = apply_rotary_pos_emb(query_states, q_cos, q_sin, position_ids)
-        key_states = apply_rotary_pos_emb(key_states, kv_cos, kv_sin, position_ids)
+        query_states = apply_rotary_pos_emb(query_states, q_cos, q_sin)
+        key_states = apply_rotary_pos_emb(key_states, kv_cos, kv_sin)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -335,6 +334,8 @@ class CrossAttnLlamaBlock(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        cross_attn_position_ids: Optional[torch.LongTensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
     ) -> Union[
@@ -350,6 +351,8 @@ class CrossAttnLlamaBlock(nn.Module):
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
+            position_ids=position_ids,
+            cross_attn_position_ids=cross_attn_position_ids,
         )
 
         cross_attn_outputs = cross_attn_outputs[0]  # output_attn: a, present, (attentions)
@@ -532,33 +535,50 @@ class CrossAttnLlama(LlamaForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        context_input_ids=None,
+        **kwargs,
     ):
-        """
-        Prepare inputs for inference, which might require encoding the context.
-        """
+        if past_key_values is not None:
+            if isinstance(past_key_values, Cache):
+                cache_length = past_key_values.get_seq_length()
+                past_length = past_key_values.seen_tokens
+                max_cache_length = past_key_values.get_max_length()
+            else:
+                cache_length = past_length = past_key_values[0][0].shape[2]
+                max_cache_length = None
 
-        token_type_ids = kwargs.get("token_type_ids", None)
+            # Keep only the unprocessed tokens:
+            # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
+            # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
+            # input)
+            if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+                input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
+            # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
+            # input_ids based on the past_length.
+            elif past_length < input_ids.shape[1]:
+                input_ids = input_ids[:, past_length:]
+            # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
 
-        # TODO: support passing of already computed input projections in previous generations
-        # only last token for inputs_ids is passed if defined in kwargs
-        # if past_key_values:
-        #     input_ids = input_ids[:, -1].unsqueeze(-1)
-        #     if token_type_ids is not None:
-        #         token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
-        past_key_values = None
+            # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
+            if (
+                max_cache_length is not None
+                and attention_mask is not None
+                and cache_length + input_ids.shape[1] > max_cache_length
+            ):
+                attention_mask = attention_mask[:, -max_cache_length:]
 
-        attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
-
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
+                position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -598,8 +618,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 "encoder_attention_mask": encoder_attention_mask,
             }
         )
-        if token_type_ids:
-            model_inputs["token_type_ids"] = token_type_ids
+
         return model_inputs
 
     def train(self, mode: bool = True) -> "CrossAttnLlama":
@@ -643,7 +662,9 @@ class CrossAttnLlama(LlamaForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
+
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
         )
@@ -665,48 +686,51 @@ class CrossAttnLlama(LlamaForCausalLM):
             )
 
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
+        if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time"
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape[:2]
-        elif inputs_embeds is not None:
-            batch_size, seq_length = inputs_embeds.shape[:2]
-        else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        past_key_values_length = 0
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
+        if self.gradient_checkpointing and self.training and use_cache:
+            Warning(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
             )
-            position_ids = position_ids.unsqueeze(0)
+            use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.transformer.embed_tokens(input_ids)
 
-        if getattr(self.config, "_flash_attn_2_enabled", False):
-            # 2d mask is passed through the layers
-            attention_mask = (
-                attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+        past_seen_tokens = 0
+        if use_cache:  # kept for BC (cache positions)
+            if not isinstance(past_key_values, Cache):
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_seen_tokens = past_key_values.get_seq_length()
+
+        if cache_position is None:
+            cache_position = torch.arange(
+                past_seen_tokens,
+                past_seen_tokens + inputs_embeds.shape[1],
+                device=inputs_embeds.device,
             )
-        else:
-            # 4d mask is passed through the layers
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
-            )
+
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        try:
+            context_length = encoder_hidden_states.size(1)
+        except AttributeError:
+            context_length = 0
+            for context_chunk in encoder_hidden_states:
+                context_length += context_chunk.size(1)
+
+        cross_attn_position_ids = torch.arange(
+            context_length,
+            device=inputs_embeds.device,
+        ).unsqueeze(0)
+
+        causal_mask = self.transformer._update_causal_mask(attention_mask, inputs_embeds)
 
         # embed positions
         hidden_states = inputs_embeds
@@ -719,7 +743,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+        next_decoder_cache = None
 
         # cross_attn_layer_idx tracks the idx of the current cross-attn layer as we forward pass.
         # It's only going to be used if encoder_hidden_states contains a list of different tensors
@@ -729,8 +753,6 @@ class CrossAttnLlama(LlamaForCausalLM):
         for idx, decoder_layer in enumerate(self.transformer.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
-
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             # Cross-attend first if not self.cross_attn_final_layer.
             if (
@@ -743,7 +765,8 @@ class CrossAttnLlama(LlamaForCausalLM):
                     cross_attn_layer_idx=cross_attn_layer_idx,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
-                    use_cache=use_cache,
+                    position_ids=position_ids,
+                    cross_attn_position_ids=cross_attn_position_ids,
                     output_attentions=output_attentions,
                 )
                 cross_attn_layer_idx += 1
@@ -754,26 +777,28 @@ class CrossAttnLlama(LlamaForCausalLM):
                 layer_outputs = self.transformer._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
-                    attention_mask,
+                    causal_mask,
                     position_ids,
-                    past_key_value,
+                    past_key_values,
                     output_attentions,
                     use_cache,
+                    cache_position,
                 )
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=causal_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                 )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -789,7 +814,8 @@ class CrossAttnLlama(LlamaForCausalLM):
                     cross_attn_layer_idx=cross_attn_layer_idx,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
-                    use_cache=use_cache,
+                    position_ids=position_ids,
+                    cross_attn_position_ids=cross_attn_position_ids,
                     output_attentions=output_attentions,
                 )
                 cross_attn_layer_idx += 1
@@ -802,7 +828,13 @@ class CrossAttnLlama(LlamaForCausalLM):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = None
+        if use_cache:
+            next_cache = (
+                next_decoder_cache.to_legacy_cache()
+                if isinstance(next_decoder_cache, Cache)
+                else next_decoder_cache
+            )
 
         if self.config.pretraining_tp > 1:
             lm_head_slices = self.lm_head.weight.split(
@@ -873,7 +905,8 @@ class CrossAttnLlama(LlamaForCausalLM):
         ] = -1,  # This is only used if encoder_hidden_states is a list of tensors to cross-attend to.
         encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
-        use_cache: Optional[bool] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        cross_attn_position_ids: Optional[torch.LongTensor] = None,
         output_attentions: Optional[bool] = None,
     ) -> Union[
         Tuple[torch.Tensor],
@@ -899,7 +932,9 @@ class CrossAttnLlama(LlamaForCausalLM):
                 None,
                 encoder_hidden_states,
                 encoder_attention_mask,
-                use_cache,
+                position_ids,
+                cross_attn_position_ids,
+                None,
                 output_attentions,
             )
         else:
@@ -907,7 +942,9 @@ class CrossAttnLlama(LlamaForCausalLM):
                 hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
-                use_cache=use_cache,
+                position_ids=position_ids,
+                cross_attn_position_ids=cross_attn_position_ids,
+                use_cache=None,
                 output_attentions=output_attentions,
             )
 
