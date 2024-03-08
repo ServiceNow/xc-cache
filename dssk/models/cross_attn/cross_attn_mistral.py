@@ -13,6 +13,7 @@ import transformers
 from transformers.activations import ACT2FN
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
     MistralRotaryEmbedding,
@@ -461,33 +462,50 @@ class CrossAttnMistral(MistralForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        context_input_ids=None,
+        **kwargs,
     ):
-        """
-        Prepare inputs for inference, which might require encoding the context.
-        """
+        if past_key_values is not None:
+            if isinstance(past_key_values, Cache):
+                cache_length = past_key_values.get_seq_length()
+                past_length = past_key_values.seen_tokens
+                max_cache_length = past_key_values.get_max_length()
+            else:
+                cache_length = past_length = past_key_values[0][0].shape[2]
+                max_cache_length = None
 
-        token_type_ids = kwargs.get("token_type_ids", None)
+            # Keep only the unprocessed tokens:
+            # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
+            # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
+            # input)
+            if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+                input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
+            # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
+            # input_ids based on the past_length.
+            elif past_length < input_ids.shape[1]:
+                input_ids = input_ids[:, past_length:]
+            # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
 
-        # TODO: support passing of already computed input projections in previous generations
-        # only last token for inputs_ids is passed if defined in kwargs
-        # if past_key_values:
-        #     input_ids = input_ids[:, -1].unsqueeze(-1)
-        #     if token_type_ids is not None:
-        #         token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
-        past_key_values = None
+            # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
+            if (
+                max_cache_length is not None
+                and attention_mask is not None
+                and cache_length + input_ids.shape[1] > max_cache_length
+            ):
+                attention_mask = attention_mask[:, -max_cache_length:]
 
-        attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
-
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
+                position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -527,8 +545,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "encoder_attention_mask": encoder_attention_mask,
             }
         )
-        if token_type_ids:
-            model_inputs["token_type_ids"] = token_type_ids
+
         return model_inputs
 
     def train(self, mode: bool = True) -> "CrossAttnMistral":
@@ -609,9 +626,11 @@ class CrossAttnMistral(MistralForCausalLM):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        past_key_values_length = 0
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
+        if use_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -659,8 +678,6 @@ class CrossAttnMistral(MistralForCausalLM):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
             # Cross-attend first if not self.cross_attn_final_layer.
             if (
                 not isinstance(self.cross_attn_layers[idx], torch.nn.Identity)
@@ -685,7 +702,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    past_key_value,
+                    past_key_values,
                     output_attentions,
                     use_cache,
                 )
@@ -694,7 +711,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
@@ -702,7 +719,7 @@ class CrossAttnMistral(MistralForCausalLM):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -731,7 +748,11 @@ class CrossAttnMistral(MistralForCausalLM):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = None
+        if use_cache:
+            next_cache = (
+                next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
+            )
 
         logits = self.lm_head(hidden_states)
         logits = logits.float()
