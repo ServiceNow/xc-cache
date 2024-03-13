@@ -11,7 +11,10 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import transformers
 from transformers.activations import ACT2FN
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_attention_mask,
+)
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.mistral.configuration_mistral import MistralConfig
@@ -204,7 +207,9 @@ class MistralCrossAttention(MistralAttention):
         attention_mask = encoder_attention_mask.to(dtype=torch.bool, device=hidden_states.device)
 
         # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat([1, 1, q_len, 1])
+        attention_mask = _prepare_4d_attention_mask(
+            attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
+        )
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
