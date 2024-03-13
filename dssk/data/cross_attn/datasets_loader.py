@@ -272,7 +272,8 @@ class Collator:
                 tokenized_context_ids["input_ids"], chunks=chunk_length
             )
             encoder_attention_mask = torch.chunk(
-                tokenized_context_ids["attention_mask"].float(), chunks=chunk_length
+                tokenized_context_ids["attention_mask"],
+                chunks=chunk_length,
             )
 
         else:
@@ -286,13 +287,13 @@ class Collator:
             )
 
             context_input_ids = tokenized_context_ids["input_ids"]
-            encoder_attention_mask = tokenized_context_ids["attention_mask"].float()
+            encoder_attention_mask = tokenized_context_ids["attention_mask"]
 
         processed_batch.update(
             {
                 "context_input_ids": context_input_ids,
-                "encoder_attention_mask": encoder_attention_mask,
-            }  # Dropout will err if we use types of type Long
+                "encoder_attention_mask": encoder_attention_mask.float(),
+            }  # Dropout will err if we use masks of type Long
         )
 
         # We repeat what is done in hugging face and labels are a simple clone of input ids
@@ -318,9 +319,7 @@ class Collator:
             processed_batch.update(
                 {
                     "no_answer_input_ids": tokenized_no_answer_input_ids["input_ids"],
-                    "no_answer_attention_mask": tokenized_no_answer_input_ids[
-                        "attention_mask"
-                    ].float(),
+                    "no_answer_attention_mask": tokenized_no_answer_input_ids["attention_mask"],
                 }
             )
             answer_list = [[el["raw_answer"]] for el in batch]
