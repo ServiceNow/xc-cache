@@ -12,26 +12,21 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 import transformers
 from transformers.activations import ACT2FN
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-from transformers.utils.import_utils import is_torch_fx_available
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_attention_mask,
+)
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
+    LlamaForCausalLM,
     LlamaAttention,
     LlamaRMSNorm,
-    LlamaForCausalLM,
     rotate_half,
     repeat_kv,
 )
 from accelerate import init_empty_weights
-
-
-# This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
-# It means that the function will not be traced through and simply appear as a node in the graph.
-if is_torch_fx_available():
-    _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
 
 
 ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm)
@@ -248,8 +243,8 @@ class LlamaCrossAttention(LlamaAttention):
 
         if encoder_attention_mask is None:
             encoder_attention_mask = torch.ones(
-                (batch_size, 1, batch_length, ctx_batch_len), device=hidden_states.device
-            )
+                (1, 1), device=hidden_states.device, dtype=hidden_states.dtype
+            ).expand(batch_size, ctx_batch_len)
 
         if self.training:
             # Since we apply dropout on masks, we don't want its eval mode effect
@@ -258,17 +253,17 @@ class LlamaCrossAttention(LlamaAttention):
             # We then only use this layer in training mode.
             encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
 
-        attention_mask = encoder_attention_mask.to(dtype=torch.bool, device=hidden_states.device)
-
         # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat([1, 1, q_len, 1])
+        encoder_attention_mask = _prepare_4d_attention_mask(
+            encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
+        )
 
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+        if encoder_attention_mask is not None:
+            if encoder_attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {encoder_attention_mask.size()}"
                 )
-            attn_weights = attn_weights + attention_mask
+            attn_weights = attn_weights + encoder_attention_mask
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
@@ -443,7 +438,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         self.base_model_id = model_id
         self.n_decoder_layers = config.num_hidden_layers
 
-        self.transformer, self.lm_head = self._make_base_decoder(cache_dir)
+        self.transformer, self.lm_head = self._make_base_decoder(config, cache_dir=cache_dir)
 
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
@@ -458,9 +453,24 @@ class CrossAttnLlama(LlamaForCausalLM):
         delattr(self, "model")
 
     def _make_base_decoder(
-        self, cache_dir=None
+        self,
+        decoder_config: LlamaConfig,
+        cache_dir=None,
     ) -> tuple[torch.nn.ModuleList, torch.nn.ModuleList]:
         base_decoder = LlamaForCausalLM.from_pretrained(self.base_model_id, cache_dir=cache_dir)
+        if (
+            decoder_config.max_len > 0
+            and decoder_config.max_len != decoder_config.max_position_embeddings
+        ):
+            causal_mask = torch.full(
+                (
+                    decoder_config.max_len,
+                    decoder_config.max_len,
+                ),
+                fill_value=True,
+                dtype=torch.bool,
+            )
+            base_decoder.model.causal_mask = torch.triu(causal_mask, diagonal=1)
         return base_decoder.model, base_decoder.lm_head
 
     def _make_cross_attn_layers(
@@ -656,7 +666,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         context_input_ids: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         encoder_hidden_states: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
-        encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
+        encoder_attention_mask: Optional[Union[torch.LongTensor, List[torch.LongTensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -726,8 +736,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 context_length += context_chunk.size(1)
 
         cross_attn_position_ids = torch.arange(
-            context_length,
-            device=inputs_embeds.device,
+            context_length, device=inputs_embeds.device
         ).unsqueeze(0)
 
         causal_mask = self.transformer._update_causal_mask(attention_mask, inputs_embeds)
