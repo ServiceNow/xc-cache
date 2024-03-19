@@ -164,6 +164,10 @@ class CrossAttnInterface(AbstractLMInterface):
             self.model.device
         )
 
+        # Drop <eos> token inserted by tokenizer from the decoder's inputs.
+        features["input_ids"] = features["input_ids"][..., :-1]
+        features["attention_mask"] = features["attention_mask"][..., :-1]
+
         # Decide whether to include the question at the start of the context.
         if self.include_questions_on_contexts:
             cross_input_key = "cross_input_str_with_question"
