@@ -272,7 +272,7 @@ class Collator:
                 tokenized_context_ids["input_ids"], chunks=chunk_length
             )
             encoder_attention_mask = torch.chunk(
-                tokenized_context_ids["attention_mask"],
+                tokenized_context_ids["attention_mask"].float(),
                 chunks=chunk_length,
             )
 
