@@ -14,7 +14,7 @@ import transformers
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_attention_mask,
 )
@@ -438,7 +438,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         self.base_model_id = model_id
         self.n_decoder_layers = config.num_hidden_layers
 
-        self.transformer, self.lm_head = self._make_base_decoder(config, cache_dir=cache_dir)
+        self.transformer, self.lm_head = self._make_base_decoder(cache_dir=cache_dir)
 
         self.cross_attn_layers = self._make_cross_attn_layers(config)
 
@@ -454,23 +454,10 @@ class CrossAttnLlama(LlamaForCausalLM):
 
     def _make_base_decoder(
         self,
-        decoder_config: LlamaConfig,
         cache_dir=None,
     ) -> tuple[torch.nn.ModuleList, torch.nn.ModuleList]:
         base_decoder = LlamaForCausalLM.from_pretrained(self.base_model_id, cache_dir=cache_dir)
-        if (
-            decoder_config.max_len > 0
-            and decoder_config.max_len != decoder_config.max_position_embeddings
-        ):
-            causal_mask = torch.full(
-                (
-                    decoder_config.max_len,
-                    decoder_config.max_len,
-                ),
-                fill_value=True,
-                dtype=torch.bool,
-            )
-            base_decoder.model.causal_mask = torch.triu(causal_mask, diagonal=1)
+
         return base_decoder.model, base_decoder.lm_head
 
     def _make_cross_attn_layers(
@@ -719,6 +706,8 @@ class CrossAttnLlama(LlamaForCausalLM):
             past_seen_tokens = past_key_values.get_seq_length()
 
         if cache_position is None:
+            if isinstance(past_key_values, StaticCache):
+                raise ValueError("cache_position is a required argument when using StaticCache.")
             cache_position = torch.arange(
                 past_seen_tokens,
                 past_seen_tokens + inputs_embeds.shape[1],
@@ -739,7 +728,9 @@ class CrossAttnLlama(LlamaForCausalLM):
             context_length, device=inputs_embeds.device
         ).unsqueeze(0)
 
-        causal_mask = self.transformer._update_causal_mask(attention_mask, inputs_embeds)
+        causal_mask = self.transformer._update_causal_mask(
+            attention_mask, inputs_embeds, cache_position
+        )
 
         # embed positions
         hidden_states = inputs_embeds
