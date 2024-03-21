@@ -17,6 +17,7 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_attention_mask,
+    _prepare_4d_attention_mask_for_sdpa,
 )
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import (
@@ -157,6 +158,7 @@ class LlamaCrossAttention(LlamaAttention):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        attn_implementation: str = "sdpa",
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -227,16 +229,6 @@ class LlamaCrossAttention(LlamaAttention):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(
-            self.head_dim
-        )
-
-        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
         batch_size = hidden_states.size(0)
         batch_length = hidden_states.size(1)
         ctx_batch_len = encoder_hidden_states.size(1)
@@ -246,60 +238,91 @@ class LlamaCrossAttention(LlamaAttention):
                 (1, 1), device=hidden_states.device, dtype=hidden_states.dtype
             ).expand(batch_size, ctx_batch_len)
 
-        if self.training:
-            # Since we apply dropout on masks, we don't want its eval mode effect
-            # Of using the expected value of its inputs, i.e., multiplying inputs by the
-            # dropout probability.
-            # We then only use this layer in training mode.
-            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
+        if attn_implementation == "sdpa":
 
-        # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
-        encoder_attention_mask = _prepare_4d_attention_mask(
-            encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
-        )
+            # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
+            encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
+            )
 
-        if encoder_attention_mask is not None:
+            if query_states.device.type == "cuda":
+                query_states = query_states.contiguous()
+                key_states = key_states.contiguous()
+                value_states = value_states.contiguous()
+
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=encoder_attention_mask,
+                dropout_p=self.config.cross_attn_dropout_prob if self.training else 0.0,
+            )
+
+            attn_output = attn_output.transpose(1, 2).contiguous()
+            attn_output = attn_output.view(bsz, q_len, self.hidden_size)
+
+            attn_weights = None
+            if not output_attentions:
+                Warning("output_attentions only has effect for eager attention implementation.")
+
+        elif attn_implementation == "eager":
+
+            if self.training:
+                # Since we apply dropout on masks, we don't want its eval mode effect
+                # Of using the expected value of its inputs, i.e., multiplying inputs by the
+                # dropout probability.
+                # We then only use this layer in training mode.
+                encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
+
+            # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
+            encoder_attention_mask = _prepare_4d_attention_mask(
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
+            )
+
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(
+                self.head_dim
+            )
+
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
+                )
+
             if encoder_attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {encoder_attention_mask.size()}"
                 )
             attn_weights = attn_weights + encoder_attention_mask
 
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-            query_states.dtype
-        )
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.attention_dropout, training=self.training
-        )
-        attn_output = torch.matmul(attn_weights, value_states)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                query_states.dtype
             )
-
-        attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-
-        if self.config.pretraining_tp > 1:
-            attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
-            o_proj_slices = self.o_proj.weight.split(
-                self.hidden_size // self.config.pretraining_tp, dim=1
+            attn_weights = nn.functional.dropout(
+                attn_weights, p=self.attention_dropout, training=self.training
             )
-            attn_output = sum(
-                [
-                    F.linear(attn_output[i], o_proj_slices[i])
-                    for i in range(self.config.pretraining_tp)
-                ]
-            )
+            attn_output = torch.matmul(attn_weights, value_states)
+
+            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+                raise ValueError(
+                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                    f" {attn_output.size()}"
+                )
+
+            attn_output = attn_output.transpose(1, 2).contiguous()
+
+            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
+            if not output_attentions:
+                attn_weights = None
+
         else:
-            attn_output = self.o_proj(attn_output)
+            raise NotImplementedError(
+                "Unknown attention implementation. Set attn_implementation to either 'eager' or 'sdpa'."
+            )
 
-        if not output_attentions:
-            attn_weights = None
+        attn_output = self.o_proj(attn_output)
 
         return attn_output, attn_weights, past_key_value
 
@@ -333,6 +356,7 @@ class CrossAttnLlamaBlock(nn.Module):
         cross_attn_position_ids: Optional[torch.LongTensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        attn_implementation: str = "sdpa",
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -348,6 +372,7 @@ class CrossAttnLlamaBlock(nn.Module):
             output_attentions=output_attentions,
             position_ids=position_ids,
             cross_attn_position_ids=cross_attn_position_ids,
+            attn_implementation=attn_implementation,
         )
 
         cross_attn_outputs = cross_attn_outputs[0]  # output_attn: a, present, (attentions)
@@ -429,6 +454,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 "cross_attn_attention_bias": cross_attn_attention_bias,
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_uaf_question_in_context",
+                "max_position_embeddings": max_len,
                 "max_len": max_len,
                 "include_questions_on_contexts": include_questions_on_contexts,
                 "chunked_contexts": chunked_contexts,
@@ -660,6 +686,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        cross_attn_implementation: str = "sdpa",
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
 
         output_attentions = (
@@ -768,6 +795,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                     position_ids=position_ids,
                     cross_attn_position_ids=cross_attn_position_ids,
                     output_attentions=output_attentions,
+                    cross_attn_implementation=cross_attn_implementation,
                 )
                 cross_attn_layer_idx += 1
 
@@ -817,6 +845,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                     position_ids=position_ids,
                     cross_attn_position_ids=cross_attn_position_ids,
                     output_attentions=output_attentions,
+                    cross_attn_implementation=cross_attn_implementation,
                 )
                 cross_attn_layer_idx += 1
 
@@ -908,6 +937,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         position_ids: Optional[torch.LongTensor] = None,
         cross_attn_position_ids: Optional[torch.LongTensor] = None,
         output_attentions: Optional[bool] = None,
+        cross_attn_implementation: str = "sdpa",
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -936,6 +966,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 cross_attn_position_ids,
                 None,
                 output_attentions,
+                cross_attn_implementation,
             )
         else:
             cross_attn_outputs = self.cross_attn_layers[layer_idx](
@@ -946,6 +977,7 @@ class CrossAttnLlama(LlamaForCausalLM):
                 cross_attn_position_ids=cross_attn_position_ids,
                 use_cache=None,
                 output_attentions=output_attentions,
+                attn_implementation=cross_attn_implementation,
             )
 
         if self.cross_attn_skip_connections:
