@@ -910,7 +910,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 encoder_attention_mask=encoder_attention_mask,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
-                cross_attn_implementation=cross_attn_implementation,
+                attn_implementation=cross_attn_implementation,
             )
 
         if self.cross_attn_skip_connections:
