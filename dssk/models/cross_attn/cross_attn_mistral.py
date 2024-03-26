@@ -190,17 +190,17 @@ class MistralCrossAttention(MistralAttention):
                 (1, 1), device=hidden_states.device, dtype=hidden_states.dtype
             ).expand(batch_size, ctx_batch_len)
 
+        if query_states.device.type == "cuda":
+            query_states = query_states.contiguous()
+            key_states = key_states.contiguous()
+            value_states = value_states.contiguous()
+
         if attn_implementation == "sdpa":
 
             # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
             encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
                 encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
             )
-
-            if query_states.device.type == "cuda":
-                query_states = query_states.contiguous()
-                key_states = key_states.contiguous()
-                value_states = value_states.contiguous()
 
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
