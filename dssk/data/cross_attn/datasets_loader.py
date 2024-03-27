@@ -229,6 +229,8 @@ class Collator:
         self.tokenizer = tokenizer
         self.maximum_length = maximum_length
 
+        self._return_generation_related_fields_(False)
+
     def __call__(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Maps list of triplets of examples to batches of token ids, masks, and labels used for training.
 
@@ -307,25 +309,32 @@ class Collator:
             labels[labels == self.tokenizer.pad_token_id] = -100
         processed_batch["labels"] = labels
 
-        # extra fields used only for extra evaluations that require generation.
-        if "raw_answer" in batch[0]:
-            no_answer_input_ids_list = [el["no_answer_input_ids"] for el in batch]
-            tokenized_no_answer_input_ids = self.tokenizer.pad(
-                {"input_ids": no_answer_input_ids_list},
-                max_length=self.maximum_length,
-                padding="longest",
-                return_tensors="pt",
-            )
-            processed_batch.update(
-                {
-                    "no_answer_input_ids": tokenized_no_answer_input_ids["input_ids"],
-                    "no_answer_attention_mask": tokenized_no_answer_input_ids["attention_mask"],
-                }
-            )
-            answer_list = [[el["raw_answer"]] for el in batch]
-            processed_batch["raw_answer"] = answer_list
+        if self._return_generation_related_fields:
 
-        return processed_batch
+            # extra fields used only for extra evaluations that require generation.
+            if "raw_answer" in batch[0]:
+                no_answer_input_ids_list = [el["no_answer_input_ids"] for el in batch]
+                tokenized_no_answer_input_ids = self.tokenizer.pad(
+                    {"input_ids": no_answer_input_ids_list},
+                    max_length=self.maximum_length,
+                    padding="longest",
+                    return_tensors="pt",
+                )
+                processed_batch.update(
+                    {
+                        "no_answer_input_ids": tokenized_no_answer_input_ids["input_ids"],
+                        "no_answer_attention_mask": tokenized_no_answer_input_ids[
+                            "attention_mask"
+                        ],
+                    }
+                )
+                answer_list = [[el["raw_answer"]] for el in batch]
+                processed_batch["raw_answer"] = answer_list
+
+            return processed_batch
+
+    def return_generation_related_fields_(self, value: bool):
+        self._return_generation_related_fields = value
 
 
 def data_prep(
