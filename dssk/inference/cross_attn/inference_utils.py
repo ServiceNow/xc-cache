@@ -50,7 +50,12 @@ class Evaluator:
             inputs["input_ids"] = no_answer_ids
             inputs["attention_mask"] = no_answer_att_mask
 
-            raw_answers.extend(inputs.pop("raw_answer"))
+            raw_answers.extend(
+                [
+                    [data_loader.collate_fn.tokenizer.decode(x, skip_special_tokens=True)]
+                    for x in inputs.pop("raw_answer_input_ids").cpu()
+                ]
+            )
 
             # Ensure data are on the correct device if self.device is not None.
             if self.device is not None:
