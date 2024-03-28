@@ -12,6 +12,7 @@ from transformers.models.gpt_bigcode.modeling_gpt_bigcode import (
     upcast_softmax,
     upcast_masked_softmax,
 )
+from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.models.gpt_bigcode.configuration_gpt_bigcode import GPTBigCodeConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
@@ -203,7 +204,10 @@ class CrossAttention(GPTBigCodeAttention):
             # Of using the expected value of its inputs, i.e., multiplying inputs by the
             # dropout probability.
             # We then only use this layer in training mode.
-            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
+            original_dtype = encoder_attention_mask.dtype
+            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask.float()).to(
+                original_dtype
+            )
 
         attention_mask = encoder_attention_mask.view(batch_size, 1, -1).to(
             dtype=torch.bool, device=hidden_states.device
@@ -640,6 +644,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
             None, key_length - query_length : key_length, :key_length
         ]
 
+        # 4d mask is passed through the layers
         if attention_mask is not None:
             self_attention_mask = self_attention_mask * attention_mask.view(batch_size, 1, -1).to(
                 dtype=torch.bool, device=self_attention_mask.device
@@ -647,7 +652,39 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
 
         # MQA models: (batch_size, query_length, n_heads, key_length)
         # MHA models: (batch_size, n_heads, query_length, key_length)
-        attention_mask = self_attention_mask.unsqueeze(2 if self.transformer.multi_query else 1)
+        self_attention_mask = self_attention_mask.unsqueeze(
+            2 if self.transformer.multi_query else 1
+        )
+
+        if self.transformer._use_sdpa and head_mask is None and not output_attentions:
+            # SDPA with a custom mask is much faster in fp16/fp32 dtype rather than bool. Cast here to floating point instead of at every layer.
+            dtype = self.transformer.wte.weight.dtype
+            min_dtype = torch.finfo(dtype).min
+            self_attention_mask = torch.where(
+                self_attention_mask,
+                torch.full([], 0.0, dtype=dtype, device=self_attention_mask.device),
+                torch.full([], min_dtype, dtype=dtype, device=self_attention_mask.device),
+            )
+
+            # output_attentions=True can not be supported when using SDPA, and we fall back on
+            # the manual implementation that requires a 4D causal mask in all cases.
+            if self.transformer.multi_query:
+                # gpt_bigcode using MQA has the bad taste to use a causal mask with shape
+                # [batch_size, target_length, 1, source_length], not compatible with SDPA, hence this transpose.
+                self_attention_mask = self_attention_mask.transpose(1, 2)
+
+            if (
+                query_length > 1
+                and attention_mask is not None
+                and attention_mask.device.type == "cuda"
+            ):
+                # From PyTorch 2.1 onwards, F.scaled_dot_product_attention with the memory-efficient attention backend
+                # produces nans if sequences are completely unattended in the attention mask. Details: https://github.com/pytorch/pytorch/issues/110213
+                self_attention_mask = AttentionMaskConverter._unmask_unattended(
+                    self_attention_mask, min_dtype=min_dtype
+                )
+
+        attention_mask = self_attention_mask
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
