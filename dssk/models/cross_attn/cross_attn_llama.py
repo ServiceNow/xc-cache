@@ -230,6 +230,7 @@ class LlamaCrossAttention(LlamaAttention):
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         batch_size = hidden_states.size(0)
+        batch_length = hidden_states.size(1)
         ctx_batch_len = encoder_hidden_states.size(1)
 
         if encoder_attention_mask is None:
@@ -246,7 +247,7 @@ class LlamaCrossAttention(LlamaAttention):
 
             # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
             encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
-                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=ctx_batch_len
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
             )
 
             attn_output = torch.nn.functional.scaled_dot_product_attention(
@@ -275,7 +276,7 @@ class LlamaCrossAttention(LlamaAttention):
 
             # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
             encoder_attention_mask = _prepare_4d_attention_mask(
-                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=ctx_batch_len
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
             )
 
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(
