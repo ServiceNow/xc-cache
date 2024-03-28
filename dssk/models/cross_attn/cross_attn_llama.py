@@ -268,7 +268,10 @@ class LlamaCrossAttention(LlamaAttention):
                 # Of using the expected value of its inputs, i.e., multiplying inputs by the
                 # dropout probability.
                 # We then only use this layer in training mode.
-                encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
+                original_dtype = encoder_attention_mask.dtype
+                encoder_attention_mask = self.cross_attn_dropout(
+                    encoder_attention_mask.float()
+                ).to(original_dtype)
 
             # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
             encoder_attention_mask = _prepare_4d_attention_mask(
