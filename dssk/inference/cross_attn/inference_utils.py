@@ -1,7 +1,24 @@
-from typing import Optional
+from typing import Optional, Dict, Union, Any
 import torch
 from dssk.metrics.generation.metrics import F1, EM, Precision, Recall
 import tqdm
+
+
+def send_data_to_device(
+    data: Dict[str, Union[torch.Tensor, Any]], device: Union[str, torch.device]
+) -> Dict[str, Union[torch.Tensor, Any]]:
+
+    # Ensure data are on the correct device if self.device is not None.
+    on_device_data = {}
+    for k, v in data.items():
+        try:
+            on_device_data[k] = v.to(device)
+        except AttributeError:
+            # Non-tensor values (e.g., List[str]) can't be moved to a device
+            # so they are kept as-is.
+            on_device_data[k] = v
+
+    return on_device_data
 
 
 class Evaluator:
@@ -36,6 +53,11 @@ class Evaluator:
         It should contain a list of lists of str corresponding to answers to questions given contexts.
         """
 
+        model = model.eval()
+
+        if self.device is None:
+            self.device = next(model.parameters()).device
+
         predictions = []
         raw_answers = []
         decoder_inputs = []
@@ -58,24 +80,29 @@ class Evaluator:
             )
 
             # Ensure data are on the correct device if self.device is not None.
-            if self.device is not None:
-                on_device_batch = {}
-                for k, v in inputs.items():
-                    try:
-                        on_device_batch[k] = v.to(self.device)
-                    except AttributeError:
-                        # Non-tensor values (e.g., List[str]) can't be moved to a device
-                        # so they are kept as-is.
-                        on_device_batch[k] = v
+            inputs = send_data_to_device(data=inputs, device=self.device)
 
-                inputs = on_device_batch
-
-            output = model.generate(
-                **inputs,
-                pad_token_id=data_loader.collate_fn.tokenizer.bos_token_id,
-                max_new_tokens=max_new_tokens,
-                **generate_kwargs,
-            )
+            with torch.no_grad():
+                try:
+                    output = model.generate(
+                        **inputs,
+                        pad_token_id=data_loader.collate_fn.tokenizer.bos_token_id,
+                        max_new_tokens=max_new_tokens,
+                        **generate_kwargs,
+                    )
+                except RuntimeError:
+                    Warning(
+                        "Got RunTimeError when trying to generate. Will retry generation on cpu."
+                    )
+                    model = model.cpu()
+                    inputs = send_data_to_device(data=inputs, device="cpu")
+                    output = model.generate(
+                        **inputs,
+                        pad_token_id=data_loader.collate_fn.tokenizer.bos_token_id,
+                        max_new_tokens=max_new_tokens,
+                        **generate_kwargs,
+                    )
+                    model = model.to(self.device)
 
             generated_answers = []
             for i in range(output.size(0)):
