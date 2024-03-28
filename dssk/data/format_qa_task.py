@@ -147,14 +147,14 @@ def cross_instruct_question_in_context(
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
 
     pre_q_str = "[INST] "
-    post_q_str = " [/INST] [INST] "
+    post_q_str = " [/INST] "
 
     return pre_post_q_format(
         d,
         pre_q_str=pre_q_str,
         post_q_str=post_q_str,
         answered_example=answered_example,
-        eos_token=f" [/INST] {eos_token}",
+        eos_token=eos_token,
         return_context_list=return_context_list,
         **kwargs,
     )
