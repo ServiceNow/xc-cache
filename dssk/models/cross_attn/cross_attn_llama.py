@@ -423,11 +423,12 @@ class CrossAttnLlama(LlamaForCausalLM):
         cross_attn_attention_bias: bool = False,
         cross_attn_skip_connections: bool = False,
         cache_dir: Optional[str] = None,
-        max_len: int = -1,
+        max_len: Optional[int] = None,
         include_questions_on_contexts: Optional[bool] = None,
         chunked_contexts: Optional[bool] = None,
     ) -> None:
         config = transformers.AutoConfig.from_pretrained(model_id)
+        print(config)
         with init_empty_weights():
             # We initialize an empty model to not waste ram.
             super().__init__(config)
@@ -438,6 +439,9 @@ class CrossAttnLlama(LlamaForCausalLM):
             cross_attn_num_attention_heads = config.num_attention_heads
         if cross_attn_num_key_value_heads is None:
             cross_attn_num_key_value_heads = cross_attn_num_attention_heads
+
+        # We can optionally change the maximum decoder's input length.
+        max_len = max_len if max_len is not None else config.max_position_embeddings
 
         config.update(
             {

@@ -375,7 +375,7 @@ class CrossAttnMistral(MistralForCausalLM):
         cross_attn_attention_bias: bool = False,
         cross_attn_skip_connections: bool = False,
         cache_dir: Optional[str] = None,
-        max_len: int = -1,
+        max_len: Optional[int] = None,
         include_questions_on_contexts: Optional[bool] = None,
         chunked_contexts: Optional[bool] = None,
     ) -> None:
@@ -391,6 +391,9 @@ class CrossAttnMistral(MistralForCausalLM):
         if cross_attn_num_key_value_heads is None:
             cross_attn_num_key_value_heads = cross_attn_num_attention_heads
 
+        # We can optionally change the maximum decoder's input length.
+        max_len = max_len if max_len else config.max_position_embeddings
+
         config.update(
             {
                 "n_cross_attn_layers": n_cross_attn_layers,
@@ -405,6 +408,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "cross_attn_attention_bias": cross_attn_attention_bias,
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_instruct_question_in_context",
+                "max_position_embeddings": max_len,
                 "max_len": max_len,
                 "include_questions_on_contexts": include_questions_on_contexts,
                 "chunked_contexts": chunked_contexts,

@@ -330,7 +330,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         cross_attn_skip_connections: bool = False,
         randomly_initialize_decoder: bool = False,
         cache_dir: Optional[str] = None,
-        max_len: int = -1,
+        max_len: Optional[int] = None,
         include_questions_on_contexts: Optional[bool] = None,
         chunked_contexts: Optional[bool] = None,
     ) -> None:
@@ -344,6 +344,9 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
         if cross_attn_num_attention_heads is None:
             cross_attn_num_attention_heads = config.num_attention_heads
 
+        # We can optionally change the maximum decoder's input length.
+        max_len = max_len if max_len else config.n_positions
+
         config.update(
             {
                 "n_cross_attn_layers": n_cross_attn_layers,
@@ -356,6 +359,7 @@ class CrossAttnGPTBigCode(GPTBigCodeForCausalLM):
                 "cross_attn_shared_projections": cross_attn_shared_projections,
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_uaf_question_in_context",
+                "n_positions": max_len,
                 "max_len": max_len,
                 "include_questions_on_contexts": include_questions_on_contexts,
                 "chunked_contexts": chunked_contexts,
