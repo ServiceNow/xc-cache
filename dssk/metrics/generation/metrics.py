@@ -15,10 +15,10 @@ import time
 import evaluate
 import numpy as np
 import openai
-from openai.error import (
+from openai import (
     RateLimitError,
     APIConnectionError,
-    ServiceUnavailableError,
+    APIStatusError,
     APIError,
 )
 
@@ -539,7 +539,7 @@ class LLMEval(Metric):
         except (
             RateLimitError,
             APIConnectionError,
-            ServiceUnavailableError,
+            APIStatusError,
             APIError,
         ) as e:
             print(f"Error: {e}. Waiting {self.wait} seconds before retrying.")
@@ -606,7 +606,7 @@ class LLMEvalConv(LLMEval):
         except (
             RateLimitError,
             APIConnectionError,
-            ServiceUnavailableError,
+            APIStatusError,
             APIError,
         ) as e:
             print(f"Error: {e}. Waiting {self.wait} seconds before retrying.")
