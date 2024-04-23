@@ -299,6 +299,7 @@ def llama_chat_prompt_format(
     d: dict[str, Any],
     answered_example: bool,
     instruction_str: str = "Please answer the following question given the following passages. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n",
+    include_context: bool = True,
     **kwargs,
 ) -> dict[str, Any]:
     """
@@ -314,14 +315,17 @@ def llama_chat_prompt_format(
     if answered_example:
         assert answer  # Both None and "" are illegal.
     # Using just a space as the separator
-    combined_context = " ".join(context_text for context_text in d["contexts_list"])
+    if include_context:
+        combined_context = " ".join(context_text for context_text in d["contexts_list"]) + "\n"
+    else:
+        combined_context = ""
     input_str = (
         B_INST
         + " "
         + B_SYS
         + instruction_str
         + E_SYS
-        + f"{combined_context}\nQuestion: {d['question']}\n"
+        + f"{combined_context}Question: {d['question']}\n"
         + E_INST
         + "\nAnswer: "
     )
@@ -341,6 +345,20 @@ def llama_lora_chat_prompt_format(
         d=d,
         answered_example=answered_example,
         instruction_str="You're an useful assistant.\n",
+        **kwargs,
+    )
+
+
+def llama_chat_prompt_no_context_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    # The --exclude_context flag is mandatory for this prompt,
+    # as its only difference from the default one is only meant for that case.
+    assert kwargs.get("include_context", True) == False
+    return llama_chat_prompt_format(
+        d=d,
+        answered_example=answered_example,
+        instruction_str="Please answer the following question. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n",
         **kwargs,
     )
 
@@ -399,6 +417,7 @@ KNOWN_QA_TASK_FORMATS = {
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "prompt_llama_chat": llama_chat_prompt_format,
     "prompt_llama_lora_chat": llama_lora_chat_prompt_format,
+    "prompt_llama_chat_no_context": llama_chat_prompt_no_context_format,
     "fid": fid_format,
 }
 
