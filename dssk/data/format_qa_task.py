@@ -5,6 +5,35 @@ from dssk.utils.hf_datasets import update_infodict
 from dssk.data.utils.pre_processors import PosContextPreProcessor
 
 
+def get_cross_attn_model_format(model_type: str) -> Callable:
+    if model_type == "llama":
+        return cross_llama_chat_question_in_context
+    if model_type == "tulu":
+        return cross_uaf_question_in_context
+    if model_type == "mistral":
+        return cross_instruct_question_in_context
+    if model_type == "gptbigcode":
+        return cross_uaf_question_in_context
+
+    raise ValueError(f"Unkown model type: {model_type}")
+
+
+def get_single_context_with_trivial_strategy(d: dict[str, Any]) -> str:
+    return " ".join(d["contexts_list"])
+
+
+def get_context_list(d: dict[str, Any]) -> List[str]:
+    useful_contexts = [
+        d["contexts_list"][i]
+        for i in range(len(d["contexts_list"]))
+        if d["useful_contexts"][i] == 1
+    ]
+
+    useful_contexts = " ".join(useful_contexts)
+
+    return d["contexts_list"], useful_contexts
+
+
 def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
     """For cross-attention models using 'question: ' etc. as Ersatz for special tokens
     This is deprecated.
@@ -24,16 +53,13 @@ def cross_colon_format(d: dict[str, Any], answered_example: bool, **kwargs) -> d
 def cross_user_assistant_format(
     d: dict[str, Any], answered_example: bool, **kwargs
 ) -> dict[str, Any]:
-    """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
+    """Ancestor of cross_uaf_question_in_context"""
     answer = d.get("answer", "")
     if answered_example:
         assert answer  # Both None and "" are illegal.
     else:
         answer = ""
-    if "context" in d:
-        context = d["context"]
-    else:
-        context = " ".join(c for c in d["contexts_list"])
+    context = get_single_context_with_trivial_strategy(d)
     return {
         "self_input_str": f"<|user|>\n|<Q>|{d['question']}\n<|assistant|>\n{answer}",
         "cross_input_str": f"<|user|>\n|<C>|\n<|assistant|>\n{context}",
@@ -89,7 +115,11 @@ def pre_post_q_format(
 
 
 def cross_uaf_question_in_context(
-    d: dict[str, Any], answered_example: bool, eos_token: str = ""
+    d: dict[str, Any],
+    answered_example: bool,
+    return_context_list: bool,
+    eos_token: str = "",
+    **kwargs,
 ) -> dict[str, Any]:
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
 
@@ -117,14 +147,14 @@ def cross_instruct_question_in_context(
     """For cross-attention models with a base decoder using a <|user|> <|assistant|> template."""
 
     pre_q_str = "[INST] "
-    post_q_str = " [/INST] [INST] "
+    post_q_str = " [/INST] "
 
     return pre_post_q_format(
         d,
         pre_q_str=pre_q_str,
         post_q_str=post_q_str,
         answered_example=answered_example,
-        eos_token=f" [/INST] {eos_token}",
+        eos_token=eos_token,
         return_context_list=return_context_list,
         **kwargs,
     )
@@ -239,7 +269,9 @@ def system_user_assistant_prompt_format(
     return {"input_str": input_str}
 
 
-def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> dict[str, Any]:
+def tulu2_prompt_format(
+    d: dict[str, Any], answered_example: bool, include_context: bool = True, **kwargs
+) -> dict[str, Any]:
     """Native format of tulu v2 models (NOT for cross-attending models!)
 
     Format described here https://huggingface.co/allenai/tulu-2-dpo-7b
@@ -254,6 +286,81 @@ def tulu2_prompt_format(d: dict[str, Any], answered_example: bool, **kwargs) -> 
     if answered_example:
         input_str = f"{input_str}{answer}"
     return {"input_str": input_str}
+
+
+def tulu2_prompt_format_no_context(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    """Same as tulu2_prompt_format, but without including the context in the prompt."""
+    return tulu2_prompt_format(d, answered_example=answered_example, include_context=False)
+
+
+def llama_chat_prompt_format(
+    d: dict[str, Any],
+    answered_example: bool,
+    instruction_str: str = "Please answer the following question given the following passages. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n",
+    include_context: bool = True,
+    **kwargs,
+) -> dict[str, Any]:
+    """
+    Prompt for the Llama2 Chat model.
+
+    Based on https://github.com/McGill-NLP/instruct-qa/blob/b7bfb1744f6a6b066ba9dc88b5cc9cc571c4c5e9/instruct_qa/prompt/templates.py#L103,
+    with extra prompting to encourage shorter answers which can also be 'UNANSWERABLE'.
+    """
+    B_INST, E_INST = "[INST]", "[/INST]"
+    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
+
+    answer = d.get("answer", "")
+    if answered_example:
+        assert answer  # Both None and "" are illegal.
+    # Using just a space as the separator
+    if include_context:
+        combined_context = " ".join(context_text for context_text in d["contexts_list"]) + "\n"
+    else:
+        combined_context = ""
+    input_str = (
+        B_INST
+        + " "
+        + B_SYS
+        + instruction_str
+        + E_SYS
+        + f"{combined_context}Question: {d['question']}\n"
+        + E_INST
+        + "\nAnswer: "
+    )
+    if answered_example:
+        input_str = f"{input_str}{answer}"
+
+    return {"input_str": input_str}
+
+
+def llama_lora_chat_prompt_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    """
+    This is the version of the prompt which was used in research-RTLM to finetune the Llama Chat model.
+    """
+    return llama_chat_prompt_format(
+        d=d,
+        answered_example=answered_example,
+        instruction_str="You're an useful assistant.\n",
+        **kwargs,
+    )
+
+
+def llama_chat_prompt_no_context_format(
+    d: dict[str, Any], answered_example: bool, **kwargs
+) -> dict[str, Any]:
+    # The --exclude_context flag is mandatory for this prompt,
+    # as its only difference from the default one is only meant for that case.
+    assert kwargs.get("include_context", True) == False
+    return llama_chat_prompt_format(
+        d=d,
+        answered_example=answered_example,
+        instruction_str="Please answer the following question. Please be brief. If you cannot answer the question, please reply with 'UNANSWERABLE'.\n",
+        **kwargs,
+    )
 
 
 def fid_format(
@@ -310,6 +417,7 @@ KNOWN_QA_TASK_FORMATS = {
     "prompt_tulu2_no_context": tulu2_prompt_format_no_context,
     "prompt_llama_chat": llama_chat_prompt_format,
     "prompt_llama_lora_chat": llama_lora_chat_prompt_format,
+    "prompt_llama_chat_no_context": llama_chat_prompt_no_context_format,
     "fid": fid_format,
 }
 

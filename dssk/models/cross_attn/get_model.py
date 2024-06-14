@@ -28,7 +28,7 @@ def get_model(
     cross_attn_attention_bias: bool = False,
     cross_attn_skip_connections: bool = False,
     cache_dir: Optional[str] = None,
-    max_len: int = -1,
+    max_len: Optional[int] = None,
     include_questions_on_contexts: Optional[bool] = None,
     chunked_contexts: Optional[bool] = None,
 ) -> PreTrainedModel:
@@ -57,7 +57,7 @@ def get_model(
         cross_attn_attention_bias (Optional[bool]): Only used for Llama variations. Whether to train bias parameters.
         cross_attn_skip_connections (Optional[bool]): Whether to apply skip connections around cross-attn layers.
         cache_dir (Optional[str]): Optional path to store hf files for pretrained models.
-        max_len: (int): Optional value of the maximum model length to be added to the model cfg. Useful for inference. Default -1 means "unset".
+        max_len: (Optional[int]): Optional value of the maximum model length to be added to the model cfg. Useful for inference.
         include_questions_on_contexts (bool): Optional used here only to write a useful config file to facilitate inference.
         chunked_contexts (Optional[float]): Used here only to add useful info to the model config. Indicates wether chunked (not concatenated) contexts are used.
     Returns:

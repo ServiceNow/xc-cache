@@ -11,8 +11,14 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import transformers
 from transformers.activations import ACT2FN
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+    _prepare_4d_attention_mask,
+    _prepare_4d_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.models.mistral.modeling_mistral import (
     MistralRotaryEmbedding,
@@ -132,6 +138,7 @@ class MistralCrossAttention(MistralAttention):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        attn_implementation: str = "sdpa",
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -174,67 +181,103 @@ class MistralCrossAttention(MistralAttention):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(
-            self.head_dim
-        )
-
-        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
         batch_size = hidden_states.size(0)
         batch_length = hidden_states.size(1)
         ctx_batch_len = encoder_hidden_states.size(1)
 
         if encoder_attention_mask is None:
             encoder_attention_mask = torch.ones(
-                (batch_size, 1, batch_length, ctx_batch_len), device=hidden_states.device
+                (1, 1), device=hidden_states.device, dtype=hidden_states.dtype
+            ).expand(batch_size, ctx_batch_len)
+
+        if query_states.device.type == "cuda":
+            query_states = query_states.contiguous()
+            key_states = key_states.contiguous()
+            value_states = value_states.contiguous()
+
+        if attn_implementation == "sdpa":
+
+            # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
+            encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
             )
 
-        if self.training:
-            # Since we apply dropout on masks, we don't want its eval mode effect
-            # Of using the expected value of its inputs, i.e., multiplying inputs by the
-            # dropout probability.
-            # We then only use this layer in training mode.
-            encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask)
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=encoder_attention_mask,
+                dropout_p=self.config.cross_attn_dropout_prob if self.training else 0.0,
+            )
 
-        attention_mask = encoder_attention_mask.to(dtype=torch.bool, device=hidden_states.device)
+            attn_output = attn_output.transpose(1, 2).contiguous()
+            attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
-        # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat([1, 1, q_len, 1])
+            attn_weights = None
+            if not output_attentions:
+                Warning("output_attentions only has effect for eager attention implementation.")
 
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+        elif attn_implementation == "eager":
+
+            if self.training:
+                # Since we apply dropout on masks, we don't want its eval mode effect
+                # Of using the expected value of its inputs, i.e., multiplying inputs by the
+                # dropout probability.
+                # We then only use this layer in training mode.
+                original_dtype = encoder_attention_mask.dtype
+                encoder_attention_mask = self.cross_attn_dropout(encoder_attention_mask).to(
+                    original_dtype
                 )
-            attn_weights = attn_weights + attention_mask
 
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
-            query_states.dtype
-        )
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.attention_dropout, training=self.training
-        )
-        attn_output = torch.matmul(attn_weights, value_states)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+            # make 4d mask. From shape (bsz, kv_seq_len) to (bsz, 1, q_len, kv_seq_len)
+            encoder_attention_mask = _prepare_4d_attention_mask(
+                encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=batch_length
             )
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(
+                self.head_dim
+            )
 
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
+                )
+
+            if encoder_attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {encoder_attention_mask.size()}"
+                )
+            attn_weights = attn_weights + encoder_attention_mask
+
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
+                query_states.dtype
+            )
+            attn_weights = nn.functional.dropout(
+                attn_weights, p=self.attention_dropout, training=self.training
+            )
+            attn_output = torch.matmul(attn_weights, value_states)
+
+            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+                raise ValueError(
+                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                    f" {attn_output.size()}"
+                )
+
+            attn_output = attn_output.transpose(1, 2).contiguous()
+
+            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
+            if not output_attentions:
+                attn_weights = None
+
+        else:
+            raise NotImplementedError(
+                "Unknown attention implementation. Set attn_implementation to either 'eager' or 'sdpa'."
+            )
 
         attn_output = self.o_proj(attn_output)
-
-        if not output_attentions:
-            attn_weights = None
 
         return attn_output, attn_weights, past_key_value
 
@@ -266,6 +309,7 @@ class CrossAttnMistralBlock(nn.Module):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         use_cache: bool = False,
         output_attentions: bool = False,
+        attn_implementation: str = "sdpa",
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -279,6 +323,7 @@ class CrossAttnMistralBlock(nn.Module):
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
+            attn_implementation=attn_implementation,
         )
 
         cross_attn_outputs = cross_attn_outputs[0]  # output_attn: a, present, (attentions)
@@ -330,7 +375,7 @@ class CrossAttnMistral(MistralForCausalLM):
         cross_attn_attention_bias: bool = False,
         cross_attn_skip_connections: bool = False,
         cache_dir: Optional[str] = None,
-        max_len: int = -1,
+        max_len: Optional[int] = None,
         include_questions_on_contexts: Optional[bool] = None,
         chunked_contexts: Optional[bool] = None,
     ) -> None:
@@ -346,6 +391,9 @@ class CrossAttnMistral(MistralForCausalLM):
         if cross_attn_num_key_value_heads is None:
             cross_attn_num_key_value_heads = cross_attn_num_attention_heads
 
+        # We can optionally change the maximum decoder's input length.
+        max_len = max_len if max_len else config.max_position_embeddings
+
         config.update(
             {
                 "n_cross_attn_layers": n_cross_attn_layers,
@@ -360,6 +408,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "cross_attn_attention_bias": cross_attn_attention_bias,
                 "cross_attn_skip_connections": cross_attn_skip_connections,
                 "input_format_fn": "cross_instruct_question_in_context",
+                "max_position_embeddings": max_len,
                 "max_len": max_len,
                 "include_questions_on_contexts": include_questions_on_contexts,
                 "chunked_contexts": chunked_contexts,
@@ -461,33 +510,50 @@ class CrossAttnMistral(MistralForCausalLM):
         return self
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, context_input_ids=None, **kwargs
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        context_input_ids=None,
+        **kwargs,
     ):
-        """
-        Prepare inputs for inference, which might require encoding the context.
-        """
+        if past_key_values is not None:
+            if isinstance(past_key_values, Cache):
+                cache_length = past_key_values.get_seq_length()
+                past_length = past_key_values.seen_tokens
+                max_cache_length = past_key_values.get_max_length()
+            else:
+                cache_length = past_length = past_key_values[0][0].shape[2]
+                max_cache_length = None
 
-        token_type_ids = kwargs.get("token_type_ids", None)
+            # Keep only the unprocessed tokens:
+            # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
+            # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
+            # input)
+            if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+                input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
+            # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
+            # input_ids based on the past_length.
+            elif past_length < input_ids.shape[1]:
+                input_ids = input_ids[:, past_length:]
+            # 3 - Otherwise (past_length >= input_ids.shape[1]), let's assume input_ids only has unprocessed tokens.
 
-        # TODO: support passing of already computed input projections in previous generations
-        # only last token for inputs_ids is passed if defined in kwargs
-        # if past_key_values:
-        #     input_ids = input_ids[:, -1].unsqueeze(-1)
-        #     if token_type_ids is not None:
-        #         token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
-        past_key_values = None
+            # If we are about to go beyond the maximum cache length, we need to crop the input attention mask.
+            if (
+                max_cache_length is not None
+                and attention_mask is not None
+                and cache_length + input_ids.shape[1] > max_cache_length
+            ):
+                attention_mask = attention_mask[:, -max_cache_length:]
 
-        attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
-
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
-                position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
+                position_ids = position_ids[:, -input_ids.shape[1] :]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -527,8 +593,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 "encoder_attention_mask": encoder_attention_mask,
             }
         )
-        if token_type_ids:
-            model_inputs["token_type_ids"] = token_type_ids
+
         return model_inputs
 
     def train(self, mode: bool = True) -> "CrossAttnMistral":
@@ -572,6 +637,7 @@ class CrossAttnMistral(MistralForCausalLM):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cross_attn_implementation: str = "sdpa",
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         output_attentions = (
             output_attentions if output_attentions is not None else self.config.output_attentions
@@ -609,9 +675,11 @@ class CrossAttnMistral(MistralForCausalLM):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        past_key_values_length = 0
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
+        if use_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(seq_length)
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -621,20 +689,35 @@ class CrossAttnMistral(MistralForCausalLM):
                 dtype=torch.long,
                 device=device,
             )
-            position_ids = position_ids.unsqueeze(0)
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
 
         if inputs_embeds is None:
             inputs_embeds = self.transformer.embed_tokens(input_ids)
 
-        if getattr(self.config, "_flash_attn_2_enabled", False):
+        if self.transformer._attn_implementation == "flash_attention_2":
             # 2d mask is passed through the layers
             attention_mask = (
                 attention_mask if (attention_mask is not None and 0 in attention_mask) else None
             )
+        elif self.transformer._attn_implementation == "sdpa" and not output_attentions:
+            # output_attentions=True can not be supported when using SDPA, and we fall back on
+            # the manual implementation that requires a 4D causal mask in all cases.
+            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+                attention_mask,
+                (batch_size, seq_length),
+                inputs_embeds,
+                past_key_values_length,
+            )
         else:
             # 4d mask is passed through the layers
             attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+                attention_mask,
+                (batch_size, seq_length),
+                inputs_embeds,
+                past_key_values_length,
+                sliding_window=self.config.sliding_window,
             )
 
         # embed positions
@@ -659,8 +742,6 @@ class CrossAttnMistral(MistralForCausalLM):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
             # Cross-attend first if not self.cross_attn_final_layer.
             if (
                 not isinstance(self.cross_attn_layers[idx], torch.nn.Identity)
@@ -674,6 +755,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    cross_attn_implementation=cross_attn_implementation,
                 )
                 cross_attn_layer_idx += 1
 
@@ -685,7 +767,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    past_key_value,
+                    past_key_values,
                     output_attentions,
                     use_cache,
                 )
@@ -694,7 +776,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
@@ -702,7 +784,7 @@ class CrossAttnMistral(MistralForCausalLM):
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -720,6 +802,7 @@ class CrossAttnMistral(MistralForCausalLM):
                     encoder_attention_mask=encoder_attention_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    cross_attn_implementation=cross_attn_implementation,
                 )
                 cross_attn_layer_idx += 1
 
@@ -731,7 +814,11 @@ class CrossAttnMistral(MistralForCausalLM):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = None
+        if use_cache:
+            next_cache = (
+                next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
+            )
 
         logits = self.lm_head(hidden_states)
         logits = logits.float()
@@ -794,6 +881,7 @@ class CrossAttnMistral(MistralForCausalLM):
         encoder_attention_mask: Optional[Union[torch.FloatTensor, List[torch.FloatTensor]]] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
+        cross_attn_implementation: str = "sdpa",
     ) -> Union[
         Tuple[torch.Tensor],
         Tuple[torch.Tensor, torch.Tensor],
@@ -820,6 +908,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 encoder_attention_mask,
                 use_cache,
                 output_attentions,
+                cross_attn_implementation,
             )
         else:
             cross_attn_outputs = self.cross_attn_layers[layer_idx](
@@ -828,6 +917,7 @@ class CrossAttnMistral(MistralForCausalLM):
                 encoder_attention_mask=encoder_attention_mask,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
+                attn_implementation=cross_attn_implementation,
             )
 
         if self.cross_attn_skip_connections:
