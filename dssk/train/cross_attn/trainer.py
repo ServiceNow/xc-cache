@@ -20,6 +20,11 @@ class CustomTrainer(Trainer):
         else:
             labels = None
 
+        # Drop fields related to generationin case those are in the batch since they're not used here.
+        inputs.pop("raw_answer", None)
+        inputs.pop("no_answer_input_ids", None)
+        inputs.pop("no_answer_attention_mask", None)
+
         outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
