@@ -13,13 +13,6 @@ class AbstractLMInterface(ABC):
     # TODO: Add property "model_descriptor" giving name/checkpoint
 
     @property
-    @abstractmethod
-    def end_token(self) -> str:
-        """
-        Return the early-stopping token which can be added to the end of the output.
-        """
-
-    @property
     def model_info(self) -> dict[str, Any]:
         """Information about this model, how it was train, etc.
 
