@@ -29,7 +29,7 @@ from openai import (
 # from scipy.special import softmax
 
 from dssk.data.utils.templates import HistoryTemplate, PromptTemplate
-from dssk.metrics.generation import Metric
+from dssk.metrics import Metric
 
 
 class Meteor(Metric):
