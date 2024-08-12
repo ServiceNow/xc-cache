@@ -25,7 +25,7 @@ from transformers import (
     AutoTokenizer,
 )
 
-from dssk.metrics.generation import Metric
+from dssk.metrics import Metric
 from dssk.data.utils.templates import HistoryTemplate, PromptTemplate
 
 
