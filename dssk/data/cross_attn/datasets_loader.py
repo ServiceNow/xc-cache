@@ -260,7 +260,7 @@ class Collator:
 
         processed_batch = {
             "input_ids": decoder_inputs["input_ids"],
-            "attention_mask": decoder_inputs["attention_mask"].bool(),
+            "attention_mask": decoder_inputs["attention_mask"],
         }
 
         if is_chunked_ctx:
@@ -285,7 +285,7 @@ class Collator:
                 tokenized_context_ids["input_ids"], chunks=chunk_length
             )
             encoder_attention_mask = torch.chunk(
-                tokenized_context_ids["attention_mask"].bool(),
+                tokenized_context_ids["attention_mask"],
                 chunks=chunk_length,
             )
 
@@ -300,7 +300,7 @@ class Collator:
             )
 
             context_input_ids = tokenized_context_ids["input_ids"]
-            encoder_attention_mask = tokenized_context_ids["attention_mask"].bool()
+            encoder_attention_mask = tokenized_context_ids["attention_mask"]
 
         processed_batch.update(
             {
