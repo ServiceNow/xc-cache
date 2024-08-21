@@ -210,6 +210,7 @@ class DatasetWithContext(Dataset):
                 truncation=True,
             )["input_ids"]
             processed_item["raw_answer_input_ids"] = raw_answer_input_ids
+            processed_item["dataset"] = self.train_dataset[example_idx]["dataset"]
 
         return processed_item
 
@@ -347,6 +348,7 @@ class Collator:
             processed_batch.update(
                 {
                     "raw_answer_input_ids": tokenized_raw_answer_input_ids["input_ids"],
+                    "datasets": [el["dataset"] for el in batch],
                 }
             )
 
@@ -393,7 +395,7 @@ def data_prep(
         data = datasets.load_dataset(data_dir, cache_dir=data_cache_dir, use_auth_token=True)
 
     training_data = data["train"]
-    validation_data = data["val"].shuffle().select(range(100))
+    validation_data = data["val"]
 
     if training_data_subset.lower() != "all":
         training_data = training_data.filter(
