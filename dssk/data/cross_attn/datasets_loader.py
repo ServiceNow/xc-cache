@@ -393,7 +393,7 @@ def data_prep(
         data = datasets.load_dataset(data_dir, cache_dir=data_cache_dir, use_auth_token=True)
 
     training_data = data["train"]
-    validation_data = data["val"]
+    validation_data = data["val"].shuffle().select(range(100))
 
     if training_data_subset.lower() != "all":
         training_data = training_data.filter(
