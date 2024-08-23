@@ -1,5 +1,6 @@
-from typing import Optional, Dict, Union, Any
+from typing import Optional, List, Dict, Union, Any
 import torch
+from transformers import PreTrainedTokenizerFast
 from dssk.metrics.generation.metrics import F1, EM, Precision, Recall
 import tqdm
 
@@ -20,12 +21,25 @@ def send_data_to_device(
     return on_device_data
 
 
-def process_inputs(*, model, inputs, tokenizer, max_new_tokens, device, generate_kwargs):
+def process_inputs(
+    *,
+    model: torch.nn.Module,
+    inputs: Dict[str, torch.Tensor],
+    tokenizer: PreTrainedTokenizerFast,
+    max_new_tokens: int,
+    device: Union[str, torch.device],
+    generate_kwargs: Dict[str, Any],
+) -> List[List[str]]:
+    """This function takes as input a batch of data as output by an instance of dssk.data.cross_attn.data_processors.Collator,
+    and a model and tokenizer, and returns predictions from the model. Model inputs that yielded generations are also returned.
+    """
     # Drop labels if present.
     inputs.pop("labels", None)
     datasets_list = inputs.pop("datasets", None)
 
     # Replace ids by the ones that do not contain the answer.
+    # Unlike training, for evaluation, the decoder receives input ids
+    # that do not contain the answer since we want to generate answers.
     no_answer_ids = inputs.pop("no_answer_input_ids")
     no_answer_att_mask = inputs.pop("no_answer_attention_mask")
     inputs["input_ids"] = no_answer_ids
