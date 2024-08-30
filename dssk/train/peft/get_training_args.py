@@ -42,7 +42,7 @@ def get_training_args(exp_dict, args, savedir):
         ddp_find_unused_parameters=False,
         deepspeed=deepspeed_config,
         push_to_hub=args.push_to_hub,
-        metric_for_best_model="eval_loss",
+        load_best_model_at_end=False,
         remove_unused_columns=False,  # This needs to be False since our custom dataset passes fields that are processed in the collator.
         # save_total_limit=5,
     )
