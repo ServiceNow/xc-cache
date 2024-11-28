@@ -1,0 +1,24 @@
+--find-links https://download.pytorch.org/whl/cu117
+torch==2.2.1
+datasets==2.15.0
+deepspeed==0.14.0
+transformers==4.39.1
+accelerate==0.28.0
+wandb==0.15.10
+huggingface_hub==0.19.4
+openai==1.9.0
+tqdm==4.66.1
+pandas==2.1.0
+peft==0.8.2
+pre-commit==3.4.0
+pytest==7.4.1
+multiprocess==0.70.14
+black[jupyter]==23.9
+flake8==6.1
+jupyter==1.0
+scipy==1.8.1
+evaluate==0.2.2
+sentencepiece==0.1.99
+bert_score==0.3.13
+calflops==0.2.9
+jsonlines==4.0.0
