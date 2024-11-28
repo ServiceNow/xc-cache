@@ -243,7 +243,6 @@ def calculate_score_for_single_file(
         # the List[str] into a List[List[str]]
 
         # If the inf_dataset["answer"] is a dict, use the normalized text
-        # This is the case for TriviaQA dataset runs in RepLiQA paper
         if type(inf_dataset["answer"][0]) is dict:
             references = [ref["normalized_aliases"] for ref in inf_dataset["answer"]]
         else:
