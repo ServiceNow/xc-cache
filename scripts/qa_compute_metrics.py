@@ -24,7 +24,7 @@ DatasetInfo(
    },
    'model': {
        'class_name': 'CrossAttnGPTBigCode',
-       'name_or_path': '/mnt/dssk/data/hf_models/starcoderbase-3b',
+       'name_or_path': 'data_rw/hf_models/starcoderbase-3b',
        'default_gen_args': {
            'max_new_tokens': 30
        }
@@ -50,9 +50,9 @@ import json
 from datasets import load_from_disk
 from typing import Optional, Any, Dict, List
 
-from dssk.metrics.generation.utils import load_metric
-from dssk.data.process_answers import KNOWN_ANSWER_PROCESSING
-from dssk.utils.hf_datasets import merge_duplicated_rows
+from xc_cache.metrics.generation.utils import load_metric
+from xc_cache.data.process_answers import KNOWN_ANSWER_PROCESSING
+from xc_cache.utils.hf_datasets import merge_duplicated_rows
 
 
 def get_metric_scores(

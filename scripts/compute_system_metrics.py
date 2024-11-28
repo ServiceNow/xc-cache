@@ -11,10 +11,10 @@ from pathlib import Path
 from pprint import pprint
 from typing import Optional, Any
 
-from dssk.inference.get_interface import get_interface
-from dssk.metrics.generation.system_metrics import estimate_flops_macs_params
-from dssk.models import KNOWN_MODEL_TYPE, infer_model_type
-from dssk.utils.scripting import get_local_rank_and_world_size
+from xc_cache.inference.get_interface import get_interface
+from xc_cache.metrics.generation.system_metrics import estimate_flops_macs_params
+from xc_cache.models import KNOWN_MODEL_TYPE, infer_model_type
+from xc_cache.utils.scripting import get_local_rank_and_world_size
 
 def create_parser():
     import argparse

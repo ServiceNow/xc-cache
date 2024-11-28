@@ -14,21 +14,21 @@ from pprint import pprint
 
 from datasets import Dataset, load_from_disk
 
-from dssk.data.get_qa_task import (  # noqa: E402
+from xc_cache.data.get_qa_task import (  # noqa: E402
     get_qa_task,
     KNOWN_CONTEXT_OPTIONS,
     KNOWN_ANSWER_OPTIONS,
 )
-from dssk.data.format_qa_task import (  # noqa: E402
+from xc_cache.data.format_qa_task import (  # noqa: E402
     format_qa_task,
     CleanupQATask,
     KNOWN_QA_TASK_FORMATS,
     KNOWN_POST_CLEANUPS,
 )
-from dssk.models import KNOWN_MODEL_TYPE, infer_model_type  # noqa: E402
-from dssk.inference.get_interface import get_interface  # noqa: E402
-from dssk.utils.scripting import get_local_rank_and_world_size  # noqa: E402
-from dssk.utils.hf_datasets import no_cache, concatenate_datasets_with_infodict  # noqa: E402
+from xc_cache.models import KNOWN_MODEL_TYPE, infer_model_type  # noqa: E402
+from xc_cache.inference.get_interface import get_interface  # noqa: E402
+from xc_cache.utils.scripting import get_local_rank_and_world_size  # noqa: E402
+from xc_cache.utils.hf_datasets import no_cache, concatenate_datasets_with_infodict  # noqa: E402
 
 
 def create_parser():
@@ -66,7 +66,7 @@ def create_parser():
 
     parser.add_argument(
         "--dataset_name",
-        default="dssk_training_data",
+        default="xc_cache_training_data",
         type=str,
         help="Name of the original dataset used to build the task. Do not confuse 'name' with 'path'! If you want to use 'ServiceNow/foo', the 'name' is 'foo'!",
     )

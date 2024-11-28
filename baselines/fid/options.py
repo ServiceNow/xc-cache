@@ -131,7 +131,7 @@ class Options:
         )
         self.parser.add_argument(
             "--dataset_name",
-            default="dssk_training_data",
+            default="xc_cache_training_data",
             type=str,
             help="Name of the original dataset used to build the task. Do not confuse 'name' with 'path'! If you want to use 'ServiceNow/foo', the 'name' is 'foo'!",
         )

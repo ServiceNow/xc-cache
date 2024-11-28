@@ -6,17 +6,17 @@ from typing import Optional
 from pathlib import Path
 import torch
 
-from dssk.utils.scripting import print_rank_0, get_local_rank_and_world_size
-from dssk.utils.scripting import parse_bool_flag, set_random_seed
-from dssk.utils.jobs import save_exp_dict
-from dssk.utils.jobs import dict_hash
-from dssk.models.peft.get_model import get_model, get_cross_model
-from dssk.models.get_tokenizer import get_tokenizer
+from xc_cache.utils.scripting import print_rank_0, get_local_rank_and_world_size
+from xc_cache.utils.scripting import parse_bool_flag, set_random_seed
+from xc_cache.utils.jobs import save_exp_dict
+from xc_cache.utils.jobs import dict_hash
+from xc_cache.models.peft.get_model import get_model, get_cross_model
+from xc_cache.models.get_tokenizer import get_tokenizer
 from scripts.peft.config.exp_configs import EXP_GROUPS
-from dssk.data.peft.datasets_loader import dssk_data_prep
-from dssk.train.peft.trainer import get_trainer
-from dssk.train.peft.get_training_args import get_training_args
-from dssk.utils.hf import get_model_path_from_config
+from xc_cache.data.peft.datasets_loader import xc_cache_data_prep
+from xc_cache.train.peft.trainer import get_trainer
+from xc_cache.train.peft.get_training_args import get_training_args
+from xc_cache.utils.hf import get_model_path_from_config
 
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
@@ -75,7 +75,7 @@ def parse_training_args(args: Optional[list[str]] = None):
     )
     parser.add_argument(
         "--dataset",
-        default="ServiceNow/dssk_training_data",
+        default="ServiceNow/xc_cache_training_data",
     )
     parser.add_argument(
         "--cache_dir",
@@ -206,7 +206,7 @@ def train(exp_dict, savedir, args):
     # tensors of the wrong shape.
     decoder.config.use_cache = False
 
-    training_data, validation_data = dssk_data_prep(
+    training_data, validation_data = xc_cache_data_prep(
         tokenizer=tokenizer,
         context_length=exp_dict["context_size"],
         dataset_name=args.dataset,

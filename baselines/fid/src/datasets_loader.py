@@ -11,7 +11,7 @@ import logging
 from datasets import Dataset
 from torch.utils.data import RandomSampler, Sampler
 
-from dssk.data.format_qa_task import fid_format
+from xc_cache.data.format_qa_task import fid_format
 
 logger = logging.getLogger(__name__)
 

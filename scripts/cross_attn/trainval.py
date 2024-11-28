@@ -5,16 +5,16 @@ from pathlib import Path
 import logging
 from typing import Optional
 import torch
-from dssk.utils.scripting import print_rank_0, get_local_rank_and_world_size
-from dssk.utils.scripting import parse_bool_flag, set_random_seed
-from dssk.utils.jobs import save_exp_dict
-from dssk.utils.jobs import dict_hash
-from dssk.models.cross_attn.get_model import get_model
-from dssk.models.get_tokenizer import get_tokenizer
+from xc_cache.utils.scripting import print_rank_0, get_local_rank_and_world_size
+from xc_cache.utils.scripting import parse_bool_flag, set_random_seed
+from xc_cache.utils.jobs import save_exp_dict
+from xc_cache.utils.jobs import dict_hash
+from xc_cache.models.cross_attn.get_model import get_model
+from xc_cache.models.get_tokenizer import get_tokenizer
 from scripts.cross_attn.config.exp_configs import EXP_GROUPS
-from dssk.data.cross_attn.datasets_loader import data_prep
-from dssk.train.cross_attn.trainer import get_trainer
-from dssk.train.cross_attn.get_training_args import get_training_args
+from xc_cache.data.cross_attn.datasets_loader import data_prep
+from xc_cache.train.cross_attn.trainer import get_trainer
+from xc_cache.train.cross_attn.get_training_args import get_training_args
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",

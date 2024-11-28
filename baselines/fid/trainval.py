@@ -18,7 +18,7 @@ from baselines.fid.src.t5_wrapper import FiDT5
 from baselines.fid.get_training_args import get_training_args
 from baselines.fid.trainer import get_trainer
 from baselines.fid.options import Options
-from dssk.utils.scripting import get_local_rank_and_world_size, set_random_seed, print_rank_0
+from xc_cache.utils.scripting import get_local_rank_and_world_size, set_random_seed, print_rank_0
 
 
 def main(explicit_arguments: Optional[list[str]] = None) -> str:

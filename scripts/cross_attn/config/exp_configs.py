@@ -51,7 +51,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoder": {
-        "model_path": "/mnt/dssk/data_rw/starcoder",
+        "model_path": "data_rw/starcoder",
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 4,
         "cross_attn_shared_weights": True,
@@ -62,7 +62,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoderbase-1b": {
-        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-1b",
+        "model_path": "data_rw/hf_models/starcoderbase-1b",
         "training_data_subset": "nq",  # Expects values in {"all", "msmarco", "hotpotqa", "squad_v2", "nq", "topiocqa"}
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 3,
@@ -77,7 +77,7 @@ MODEL_CONFIGS = {
         "include_context_ids": True,
     },
     "crossattn_starcoderbase-3b": {
-        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-3b",
+        "model_path": "data_rw/hf_models/starcoderbase-3b",
         "num_cross_attn_layers": 6,
         "cross_attn_layers_stride": 6,
         "cross_attn_shared_weights": False,
@@ -97,7 +97,7 @@ MODEL_CONFIGS = {
         "label_smoothing_factor": 0.0,
     },
     "crossattn_starcoderbase-7b": {
-        "model_path": "/mnt/dssk/data_rw/hf_models/starcoderbase-7b",
+        "model_path": "data_rw/hf_models/starcoderbase-7b",
         "num_cross_attn_layers": 8,
         "cross_attn_layers_stride": 4,
         "cross_attn_shared_weights": True,

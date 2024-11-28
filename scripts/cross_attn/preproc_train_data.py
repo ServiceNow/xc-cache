@@ -5,8 +5,8 @@ import datasets
 from datasets import Dataset
 from typing import Optional
 
-from dssk.data.utils.encoder import Encoder
-from dssk.data.utils.pre_processors import TrainDataPreProcessor
+from xc_cache.data.utils.encoder import Encoder
+from xc_cache.data.utils.pre_processors import TrainDataPreProcessor
 
 
 def train_data_prep(
@@ -39,7 +39,7 @@ def train_data_prep(
     )
 
     # We expect a dataset in hf's hub containing the fields 'context', 'question', and 'answer'.
-    # The training dataset being used currently can be prepared using dssk.data.cross_attn.prepare_train_data.py.
+    # The training dataset being used currently can be prepared using xc_cache.data.cross_attn.prepare_train_data.py.
     training_data = datasets.load_dataset(training_data_path, cache_dir=data_dir)
 
     processed_datasets_dict = {}
@@ -70,7 +70,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> None:
     parser.add_argument(
         "--training_data_id",
         type=str,
-        default="ServiceNow/dssk_training_data",
+        default="ServiceNow/xc_cache_training_data",
         help="Hugging face hub ID of training data.",
     )
     parser.add_argument(

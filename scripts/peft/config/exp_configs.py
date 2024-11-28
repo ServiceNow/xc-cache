@@ -24,7 +24,7 @@ BASE_CONFIG = {
 MODEL_CONFIGS = {
     "cross_encoder_llama_7b": {
         "model_path": None,
-        "checkpoint_path": "/mnt/dssk/data_rw/test_ckpt/llama-7b/checkpoint-20000",
+        "checkpoint_path": "data_rw/test_ckpt/llama-7b/checkpoint-20000",
         "context_size": 8192,
         "lora_cfg": {  # https://github.com/huggingface/peft/blob/8f63f565c6baa93de4bd57c21d38e0ce4868c519/src/peft/tuners/lora.py#L40
             "r": 8,

@@ -1,7 +1,7 @@
 import argparse
 
 from baselines.fid.trainval import main as fid_trainval
-from dssk.utils.scripting import get_local_rank_and_world_size
+from xc_cache.utils.scripting import get_local_rank_and_world_size
 from scripts.compute_system_metrics import main as compute_system_metrics_main
 from scripts.qa_evaluation import main as qa_evaluation_main
 from scripts.qa_compute_metrics import main as qa_compute_metrics_main
@@ -22,7 +22,7 @@ KNOWN_MAIN_SCRIPTS = {
 
 
 def main():
-    """Root-directory entrypoint script for dssk.
+    """Root-directory entrypoint script for xc_cache.
 
     Our scripts are actually modules meant to be called from the repo's root folder using python's `-m` argument, e.g.,
 

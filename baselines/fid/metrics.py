@@ -6,7 +6,7 @@ from transformers import EvalPrediction, T5Tokenizer
 from typing import Callable, Dict, Iterable, List, Tuple
 from tqdm import tqdm
 
-from dssk.metrics.generation.metrics import F1, EM
+from xc_cache.metrics.generation.metrics import F1, EM
 
 
 def lmap(f: Callable, x: Iterable) -> List:
