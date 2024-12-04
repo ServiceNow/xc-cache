@@ -3,7 +3,7 @@ Cross-Attending to Cached Context for Efficient LLM Inference
 
 
 ## Setup the environment
-We use the `codna` environment for this project. 
+We use the `conda` environment for this project. 
 
 environment for this project. Follow the steps below to set it up:
 
