@@ -2,7 +2,7 @@ from typing import Optional
 
 from xc_cache.models import infer_model_type
 from xc_cache.inference.abstract_lm_interface import AbstractLMInterface
-from xc_cache.inference.reader_interfaces import CrossAttnInterface, FiDInterface, TotoInterface
+from xc_cache.inference.reader_interfaces import CrossAttnInterface, FiDInterface
 
 def get_interface(
     *,
@@ -20,7 +20,5 @@ def get_interface(
     elif model_type == "fid":
         assert model_ckpt is None
         return FiDInterface(model_path=model_path, **kwargs)
-    elif model_type == "toto":
-        return TotoInterface(**kwargs)
 
     raise NotImplementedError(f"Unknown model interface for model_type={model_type}")

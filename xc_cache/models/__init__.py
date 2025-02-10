@@ -11,7 +11,6 @@ KNOWN_MODEL_TYPE = {
     "tulu": {"tulu"},
     "mistral": {"mistral"},
     "gptbigcode": {"code"},
-    "toto": set(),
 }
 
 

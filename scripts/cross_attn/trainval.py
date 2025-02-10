@@ -34,6 +34,7 @@ def parse_training_args(args: Optional[list[str]] = None):
     parser.add_argument(
         "-e",
         "--exp_group",
+        required=True,
         help="Define the experiment group to run.",
     )
     parser.add_argument(

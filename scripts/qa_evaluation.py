@@ -65,10 +65,10 @@ def create_parser():
     )
 
     parser.add_argument(
-        "--dataset_name",
-        default="xc_cache_training_data",
+        "--dataset",
+        required=True,
         type=str,
-        help="Name of the original dataset used to build the task. Do not confuse 'name' with 'path'! If you want to use 'ServiceNow/foo', the 'name' is 'foo'!",
+        help="Name of the original dataset used to build the task on Hugging Face.",
     )
 
     parser.add_argument(
@@ -87,6 +87,7 @@ def create_parser():
 
     parser.add_argument(
         "--model_output_path",
+        required=True,
         type=str,
         help="Save intermediate result of what the model outputs.",
     )
@@ -228,7 +229,8 @@ def infer_default_kwargs(kwargs: dict[str, Any]) -> None:
             kwargs[key] = value
 
 
-def get_output_ds_name(*, dataset_name, dataset_split, subset_size=None, filter=None, **kwargs):
+def get_output_ds_name(*, dataset, dataset_split, subset_size=None, filter=None, **kwargs):
+    dataset_name = dataset.split("/")[-1]
     out = f"{dataset_name}-{dataset_split}"
     if subset_size is not None:
         out = out + f"-sub{subset_size}"

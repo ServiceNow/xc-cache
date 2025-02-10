@@ -241,9 +241,9 @@ def calculate_score_for_single_file(
             answer = ["UNANSWERABLE" for x in range(inf_dataset.shape[0])]
         else:
             answer = inf_dataset["answer"]
-        # answer_pred = inf_dataset["answer_pred"]
+        answer_pred = inf_dataset["answer_pred"]
         # answer_pred = inf_dataset["full_predicted_answer"]
-        answer_pred = inf_dataset["cleaned_answer_pred"]
+        # answer_pred = inf_dataset["cleaned_answer_pred"]
 
     # Predicted answer is post-processed if the argument is passed
     if args.answer_processing:

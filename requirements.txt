@@ -22,3 +22,4 @@ sentencepiece==0.1.99
 bert_score==0.3.13
 calflops==0.2.9
 jsonlines==4.0.0
+omegaconf==2.3.0
