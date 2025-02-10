@@ -1,5 +1,5 @@
-# xc_cache
-Cross-Attending to Cached Context for Efficient LLM Inference
+# XC-Cache
+Cross-Attending to Cached Context for Efficient LLM Inference, [link to paper](https://aclanthology.org/2024.findings-emnlp.896/)
 
 
 ## Setup the environment
@@ -19,10 +19,9 @@ Ensure you have `python3` and `conda` installed on your system.
     conda activate xccache
     ```
 
-2. Install the required Python packages and set up pre-commit hooks:
+2. Install the required Python packages:
     ```bash
     python3 -m pip install -r requirements.txt
-    python3 -m pre_commit install
     ```
 
 
@@ -38,7 +37,7 @@ High-level principles:
 
 Specific folders:
 - `entrypoint.py`: A minimalistic script that defers to scripts in `scripts/`.
-- `xc_cache/`: Our code lives here. This is to be treated as a library; scripts go in `entrypoints/`.
+- `xc_cache/`: Our code lives here. This is to be treated as a library; scripts go in `scripts/`.
     - `xc_cache/data/`: Dataloader, pre-processing operations, etc. (**Not** the data itself!)
     - `xc_cache/model/`: Neural modules, etc. (**Not** training code nor saved weights!) Subfolders are used to group main "chunks" of the project.
     - `xc_cache/train/`: Trainers, model hyperparameters, etc. The subfolders here reflect those of `xc_cache/model/`.
@@ -65,8 +64,6 @@ The training dataset is expected to include the following fields:
 - `answer`: The ground truth answer.
 - `useful_contexts`: A list of binary values (0 or 1) indicating which contexts in `contexts_list` are useful for answering the question.
 - `dataset`: Identifier for the dataset source.
-- `error`: A flag indicating errors in the sample (if any).
-- `error_msg`: A description of the error (if applicable).
 
 > **Note:**  
 > The `useful_contexts` field is particularly important for datasets like **HotpotQA**, where `contexts_list` contains distractor contexts. This field helps specify which contexts are necessary for answering the question.
@@ -81,39 +78,42 @@ The inference dataset helps assess model performance and analyze discrepancies b
 
 
 
-## Fine-tuning instructions
+## XC-Cache training instructions
 
 1. Make sure the HuggingFace variables are appropriately set, we use Weights & Biases to monitor the experiment logs:
-`HF_HUB_TOKEN_PATH`
-`HF_TOKEN`=$(head -n 1 $HF_HUB_TOKEN_PATH)
-`huggingface-cli login`
-`wandb login`
-The fine-tuning code is derived from the original repository [here](https://github.com/ServiceNow/research-RTLM).
+```bash
+HF_HUB_TOKEN_PATH
+HF_TOKEN=$(head -n 1 $HF_HUB_TOKEN_PATH)
+huggingface-cli login
+wandb login
+```
 
-1. Run
-    - `cd finetune/finetune_lora_wikipedia`
-    - `python3 finetune.py -e lora_santacoder`
-
+2. Select one of the experiments from [EXP_GROUPS](scripts/cross_attn/config/exp_configs.py), and train its cross-attention model:
+    - `python3 entrypoint.py --module cross_attn_finetune --exp_group {$EXPERIMENT_NAME} --exp_id {$SOME_ID} --savedir_base {$SAVE_FOLDER} --data_path {$HF_TRAINING_DATA}`
+3. The model checkpoints will be saved in `{$SAVE_FOLDER}/{$SOME_ID}`.
 
 
 ## Evaluation
 
-Evaluation applies a model to a given dataset, and saves the generated answers for the samples in a new HF dataset (an `inference dataset`) that contains the original data, plus the predicted answer. This process does not compute evaluation metrics. See section on `Metric Computations` to see how to generate scores given an inference dataset.  
+Evaluation applies a model to a given dataset, and saves the generated answers for the samples in a new HF dataset (an `inference dataset`) that contains the original data, plus the predicted answer. This process does not compute evaluation metrics. See section on `Metric Computations` to see how to generate scores given an inference dataset.
+
+```bash
+python3 entrypoint.py --module qa_evaluation --model_ckpt {$CHECKPOINT} --dataset {$HF_TESTING_DATA} --model_output_path {$OUTPUT_FOLDER} --to_device cuda
+python3 entrypoint.py --module qa_evaluation --model_ckpt {$CHECKPOINT} --dataset {$HF_TESTING_DATA} --model_output_path {$OUTPUT_FOLDER} --aggregate
+```
+
+The inference dataset will then be saved in `{$OUTPUT_FOLDER}/{$HF_TESTING_DATA}-test`.
 
 ### Baselines
 
 To evaluate FiD, first try running it on a subset of 10 samples, as follows:
 ```bash
-# python3 -m scripts.qa_evaluation --task_format fid --subset_size 10 --model_path {$YOUR_DATA_PATH}/nq_reader_base/ --model_output_path fid-tmp --to_device cuda
-# HACK: temporary placeholder below using "old" long_nq_dedup's test_answered
-python3 -m scripts.qa_evaluation --task_format=fid --subset_size 10 --model_path={$YOUR_MODEL_PATH}  --dataset_name=long_nq_dedup --dataset_split=test_answered --task_answer=newline --task_context=only_gold_long --post_cleanup=sept2dec --model_output_path=fid-tmp --max_new_tokens 5 --to_device cuda
+python3 entrypoint.py --module qa_evaluation --task_format=fid --subset_size 10 --model_path={$YOUR_MODEL_PATH} --dataset={$HF_TESTING_DATA} --dataset_split=test_answered --task_answer=newline --task_context=only_gold_long --post_cleanup=sept2dec --model_output_path={$TEMP_OUTPUT_FOLDER} --max_new_tokens 5 --to_device cuda
 ```
 
 To evaluate on the whole dataset, first run the model on the dataset shards, then aggregate the outputs:
 ```bash
-# TODO: Same as above.
-# HACK: Below.
-deepspeed --num_gpus 1 entrypoint.py --module qa_evaluation --task_format fid --model_path {$YOUR_MODL_PATH} --dataset_name=long_nq_dedup --dataset_split=test_answered --task_answer=newline --task_context=only_gold_long --post_cleanup=sept2dec --model_max_length 200 --model_output_path fid-tmp --dataset_num_shards=100 --ds_config=./scripts/config/deepspeed_inference.json
+deepspeed --num_gpus 1 entrypoint.py --module qa_evaluation --task_format fid --model_path {$YOUR_MODEL_PATH} --dataset_name=long_nq_dedup --dataset_split=test_answered --task_answer=newline --task_context=only_gold_long --post_cleanup=sept2dec --model_max_length 200 --model_output_path fid-tmp --dataset_num_shards=100 --ds_config=./scripts/config/deepspeed_inference.json
 deepspeed --num_gpus 1 entrypoint.py --module qa_evaluation --task_format fid --model_path {$YOUR_MODEL_PATH} --dataset_name=long_nq_dedup --dataset_split=test_answered --task_answer=newline --task_context=only_gold_long --post_cleanup=sept2dec --model_max_length 200 --model_output_path fid-tmp --dataset_num_shards=100 --ds_config=./scripts/config/deepspeed_inference.json --aggregate
 ```
 
@@ -128,7 +128,7 @@ We have two classes of metrics: performance and faithfulness metrics.
 As a quick start, run the following to compute the k-precision and rouge score for your dataset.
 
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --score_dir {$SCORE_SAVE_PATH}  --rouge --kprecision
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --score_dir {$SCORE_SAVE_PATH}  --rouge --kprecision
 ```
 
 This will compute the rouge and k-precision scores for the given data and save the results in `$SCORE_SAVE_PATH`.
@@ -144,7 +144,7 @@ If the `--store_individual_scores` option is set, then the score of each sample 
 
 To compute all possible metrics (both faithfulness metrics and inference metrics) EXCEPT the llm-based ones, you may run:
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH} --score_dir {$SCORE_SAVE_PATH}  --all_metrics --all_faith_metrics
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH} --score_dir {$SCORE_SAVE_PATH}  --all_metrics --all_faith_metrics
 ```
 
 Equivalently, the switch `--acl_metrics` will compute all the metrics reported in our [https://aclanthology.org/2024.findings-emnlp.896/](EMNLP paper).
@@ -154,7 +154,7 @@ Equivalently, the switch `--acl_metrics` will compute all the metrics reported i
 It is sometimes useful to postprocess the generated answers to remove EOS characters, ...etc. For this, use the `answer_processing` flag. Options are `postproc_X` or `postproc_tulu2`.
 
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq --all_metrics --answer_processing postproc_X
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq --all_metrics --answer_processing postproc_X
 ```
 
 
@@ -163,7 +163,7 @@ It is possible to filter the inference dataset by dataset name for computing met
 For this, use the `dataset_name` flag. The options are `nq`, `hotpotqa`, `topiocqa`.
 
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq 
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq 
 ```
 
 
@@ -172,7 +172,7 @@ It is possible to select a subset of the data samples by specifying their index.
 The text file will be loaded as an array and used to filter the data samples before metric computation.
 
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq --dataset_filter_idx_file sample_list.txt
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH}  --dataset_name nq --dataset_filter_idx_file sample_list.txt
 ```
 
 
@@ -181,9 +181,8 @@ For samples that have multiple annotations for the same question/context pairs, 
 To run such an evaluation, use the `best_answer` switch. 
 
 ```bash
-python3 -m scripts.qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH} --dataset_name nq --best_score
+python3 entrypoint.py --module qa_compute_metrics --inf_dataset_path {$YOUR_INFERENCE_DATASET_PATH} --dataset_name nq --best_score
 ```
 
 The script will first load the dataset, group by question/context, and evaluate by taking the best score for each sample.
-
 

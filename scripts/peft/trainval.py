@@ -43,6 +43,7 @@ from xc_cache.utils.hf import get_model_path_from_config
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 
+# Replace the rotary embedding with a one which can be fed 8192 tokens, to allow to go above the pre-trained limits
 # This function has been adapted from code in transformers.models.llama.modeling_llama.LlamaRotaryEmbedding
 def toto(self, seq_len, device, dtype):
     seq_len = 8192
@@ -98,7 +99,7 @@ def parse_training_args(args: Optional[list[str]] = None):
     )
     parser.add_argument(
         "--dataset",
-        default="ServiceNow/xc_cache_training_data",
+        required=True,
     )
     parser.add_argument(
         "--cache_dir",

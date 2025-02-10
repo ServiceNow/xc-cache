@@ -780,7 +780,7 @@ class CrossAttnLlama(LlamaForCausalLM):
         ).unsqueeze(0)
 
         causal_mask = self.transformer._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+            attention_mask, inputs_embeds, cache_position,
         )
 
         # embed positions

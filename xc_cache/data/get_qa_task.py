@@ -75,15 +75,10 @@ SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN = {
     None: "question",  # Default used if dataset not in dict.
 }
 
-# If some datasets need to be loaded from disk instead of HF, add them here
-DATASETS_TO_LOAD_FROM_DISK = {
-    "repliqa-syn": "data_rw/repliqa-syn_v0.0.0",
-}
-
 
 def get_qa_task(
     *,
-    dataset_name: str,
+    dataset: str,
     dataset_split: Optional[str],
     cache_path: str,
     task_context: Optional[str] = None,
@@ -126,19 +121,16 @@ def get_qa_task(
         A (usually short) answer.
         TODO: Some evaluation scheme may benefit from something more structured. We should think about it.
     """
-    if dataset_name in DATASETS_TO_LOAD_FROM_DISK:
-        tmp = load_from_disk(DATASETS_TO_LOAD_FROM_DISK[dataset_name])[dataset_split]
-    else:
-        tmp = load_dataset(f"ServiceNow/{dataset_name}", cache_dir=cache_path, split=dataset_split)
+    tmp = load_dataset(dataset, cache_dir=cache_path, split=dataset_split).select(range(100))
 
     with no_cache():
         if filter is not None:
             # Select rows according to provided filter. See "--filter" argument documentation.
             tmp = filter_with_str(tmp, filter)
         if subset_size is not None:
-            id_columns = SUBSAMPLE_ID_COLUMNS.get(dataset_name, SUBSAMPLE_ID_COLUMNS[None])
+            id_columns = SUBSAMPLE_ID_COLUMNS.get(dataset, SUBSAMPLE_ID_COLUMNS[None])
             guaranteed_unique_column = SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN.get(
-                dataset_name, SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN[None]
+                dataset, SUBSAMPLE_GUARANTEED_UNIQUE_COLUMN[None]
             )
             tmp = subsample_deterministic(tmp, subset_size, id_columns, guaranteed_unique_column)
         if task_answer:
@@ -149,7 +141,7 @@ def get_qa_task(
             tmp,
             {
                 "task": {
-                    "dataset_name": dataset_name,
+                    "dataset": dataset,
                     "dataset_split": dataset_split,
                     "context": task_context,
                     "answer": task_answer,

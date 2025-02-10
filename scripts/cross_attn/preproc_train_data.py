@@ -34,10 +34,6 @@ def train_data_prep(
     model_base_name = os.path.basename(encoding_model_path)
     processed_dataset_save_path = os.path.join(data_dir, "processed_data", model_base_name)
 
-    encoding_model = Encoder(
-        model_name=encoding_model_path, maximum_length=context_length, num_proc=num_proc
-    )
-
     # We expect a dataset in hf's hub containing the fields 'context', 'question', and 'answer'.
     # The training dataset being used currently can be prepared using xc_cache.data.cross_attn.prepare_train_data.py.
     training_data = datasets.load_dataset(training_data_path, cache_dir=data_dir)
@@ -47,6 +43,11 @@ def train_data_prep(
     # We expect at least the following set of splits to be available:
     # {'train', 'val'}
     for split in training_data.keys():
+        # Recreating the encoder for each split since otherwise there is an issue when ran on a single GPU.
+        encoding_model = Encoder(
+            model_name=encoding_model_path, maximum_length=context_length, num_proc=num_proc
+        )
+
         processed_data_split = training_data[split].map(
             TrainDataPreProcessor(encoding_model),
             remove_columns=training_data[split].column_names,
@@ -55,7 +56,7 @@ def train_data_prep(
             num_proc=num_proc,
             with_rank=True,
         )
-
+        print(f"Finished {split}")
         processed_datasets_dict[split] = processed_data_split
 
     processed_data = datasets.DatasetDict(processed_datasets_dict)
@@ -70,7 +71,7 @@ def main(explicit_arguments: Optional[list[str]] = None) -> None:
     parser.add_argument(
         "--training_data_id",
         type=str,
-        default="ServiceNow/xc_cache_training_data",
+        required=True,
         help="Hugging face hub ID of training data.",
     )
     parser.add_argument(
